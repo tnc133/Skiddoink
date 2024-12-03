@@ -2,7 +2,7 @@ class ProfilePage {
     constructor() {
         this.username = localStorage.getItem('username');
         if (!this.username) {
-            window.location.href = '/';
+            window.location.href = './index.html';
             return;
         }
 
@@ -74,22 +74,94 @@ class ProfilePage {
                 
                 // Go to main feed and play this video when clicked
                 thumbnail.addEventListener('click', () => {
-                    localStorage.setItem('playVideo', id);
-                    window.location.href = '/';
+                    localStorage.setItem('activeVideoId', id);
+                    localStorage.setItem('scrollToVideo', 'true');
+                    window.location.href = location.pathname.includes('github.io') ? 
+                        '/your-repo-name/index.html' : 
+                        './index.html';
                 });
             });
         });
     }
 
     handleUpload() {
-        // Use the same upload logic as in app.js
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'video/*';
-        input.click();
         
-        // Add the same upload handling code as in app.js
-        // This ensures consistent upload behavior
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const loadingOverlay = document.createElement('div');
+                loadingOverlay.className = 'loading-overlay';
+                loadingOverlay.innerHTML = `
+                    <div class="loading-spinner"></div>
+                    <p>Uploading video...</p>
+                `;
+                document.body.appendChild(loadingOverlay);
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', 'skiddoink_uploads');
+                formData.append('api_key', '255245241992774');
+                formData.append('timestamp', Math.round(Date.now() / 1000));
+                formData.append('cloud_name', 'dz8kxt0gy');
+                
+                const uploadUrl = 'https://api.cloudinary.com/v1_1/dz8kxt0gy/video/upload';
+                
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', uploadUrl);
+                
+                xhr.onload = async () => {
+                    if (xhr.status === 200) {
+                        const data = JSON.parse(xhr.responseText);
+                        
+                        const title = prompt('Enter a title for your video:', '') || 'Untitled Video';
+                        const description = prompt('Enter a description (optional):', '');
+
+                        const videoData = {
+                            url: data.secure_url,
+                            title: title,
+                            description: description,
+                            timestamp: Date.now(),
+                            uploadDate: new Date().toISOString(),
+                            views: 0,
+                            likes: 0,
+                            publisher: this.username
+                        };
+
+                        const newVideoRef = this.videosRef.push();
+                        await newVideoRef.set(videoData);
+
+                        // Reload the videos grid after upload
+                        this.loadUserVideos();
+                        alert('Video added successfully!');
+                    } else {
+                        throw new Error('Upload failed');
+                    }
+                    document.body.removeChild(loadingOverlay);
+                };
+                
+                xhr.onerror = () => {
+                    console.error('Error:', xhr.statusText);
+                    alert('Upload failed');
+                    document.body.removeChild(loadingOverlay);
+                };
+                
+                xhr.send(formData);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert(`Upload failed: ${error.message}`);
+                if (document.body.querySelector('.loading-overlay')) {
+                    document.body.removeChild(document.body.querySelector('.loading-overlay'));
+                }
+            }
+        };
+
+        input.click();
     }
 }
 

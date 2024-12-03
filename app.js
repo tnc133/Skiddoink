@@ -39,10 +39,18 @@ class SkiddoinkApp {
         this.usernameDisplay = document.createElement('a');
         this.usernameDisplay.className = 'username-display';
         this.usernameDisplay.textContent = localStorage.getItem('username') || 'Guest';
-        this.usernameDisplay.href = '/profile.html';
+        this.usernameDisplay.href = './profile.html';
         uploadBtn.parentElement.insertBefore(this.usernameDisplay, uploadBtn);
 
         this.loadVideos();
+
+        // Update base path for GitHub Pages
+        this.basePath = location.pathname.includes('github.io') ? 
+            '/your-repo-name/' : 
+            './';
+        
+        // Update profile link
+        this.usernameDisplay.href = this.basePath + 'profile.html';
     }
 
     checkUsername() {
@@ -176,6 +184,7 @@ class SkiddoinkApp {
         randomizedVideos.forEach(video => {
             const container = document.createElement('div');
             container.className = 'video-container';
+            container.dataset.videoId = video.id;
             
             const videoElement = document.createElement('video');
             videoElement.src = video.url;
@@ -333,6 +342,8 @@ class SkiddoinkApp {
 
             lastScrollTop = currentScrollTop;
         }, { passive: true });
+
+        this.scrollToVideo();
     }
 
     formatDate(timestamp) {
@@ -342,6 +353,35 @@ class SkiddoinkApp {
             month: 'short',
             day: 'numeric'
         });
+    }
+
+    scrollToVideo() {
+        const activeVideoId = localStorage.getItem('activeVideoId');
+        const shouldScrollToVideo = localStorage.getItem('scrollToVideo');
+        
+        if (activeVideoId && shouldScrollToVideo) {
+            // Clear the scroll flag
+            localStorage.removeItem('scrollToVideo');
+            
+            // Find the video container with this ID
+            const videos = document.querySelectorAll('.video-container');
+            let targetIndex = 0;
+            
+            videos.forEach((container, index) => {
+                if (container.dataset.videoId === activeVideoId) {
+                    targetIndex = index;
+                }
+            });
+            
+            // Scroll to the video after a short delay to ensure everything is loaded
+            setTimeout(() => {
+                const targetScroll = targetIndex * window.innerHeight;
+                this.feed.scrollTo({
+                    top: targetScroll,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
     }
 }
 
