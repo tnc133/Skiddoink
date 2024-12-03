@@ -26,13 +26,55 @@ class SkiddoinkApp {
         this.storage = firebase.storage();
         this.videosRef = this.database.ref('videos');
 
+        // Add username check after Firebase initialization
+        this.checkUsername();
+
         // Initialize upload button
         const uploadBtn = document.getElementById('uploadBtn');
         if (uploadBtn) {
             uploadBtn.addEventListener('click', () => this.handleUpload());
         }
 
+        // Add username display
+        this.usernameDisplay = document.createElement('span');
+        this.usernameDisplay.className = 'username-display';
+        this.usernameDisplay.textContent = localStorage.getItem('username') || 'Guest';
+        uploadBtn.parentElement.insertBefore(this.usernameDisplay, uploadBtn);
+
         this.loadVideos();
+    }
+
+    checkUsername() {
+        if (!localStorage.getItem('username')) {
+            const modal = document.createElement('div');
+            modal.className = 'username-modal';
+            modal.innerHTML = `
+                <div class="username-modal-content">
+                    <h2>Welcome to Skiddoink!</h2>
+                    <p>Please enter a username to continue:</p>
+                    <input type="text" id="usernameInput" maxlength="20" placeholder="Your username">
+                    <button id="submitUsername">Continue</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            const input = modal.querySelector('#usernameInput');
+            const submitBtn = modal.querySelector('#submitUsername');
+
+            const handleSubmit = () => {
+                const username = input.value.trim();
+                if (username) {
+                    localStorage.setItem('username', username);
+                    this.usernameDisplay.textContent = username;
+                    document.body.removeChild(modal);
+                }
+            };
+
+            submitBtn.addEventListener('click', handleSubmit);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleSubmit();
+            });
+        }
     }
 
     async handleUpload() {
@@ -79,7 +121,8 @@ class SkiddoinkApp {
                             timestamp: Date.now(),
                             uploadDate: new Date().toISOString(),
                             views: 0,
-                            likes: 0
+                            likes: 0,
+                            publisher: localStorage.getItem('username') || '[Deleted User]'
                         };
 
                         const newVideoRef = this.videosRef.push();
@@ -197,6 +240,7 @@ class SkiddoinkApp {
             infoOverlay.innerHTML = `
                 <div class="video-text">
                     <h3>${video.title || 'Untitled Video'}</h3>
+                    <p class="publisher">@${video.publisher || '[Deleted User]'}</p>
                     <p class="description">${video.description || ''}</p>
                     <p class="date">Posted ${this.formatDate(video.timestamp)}</p>
                 </div>
@@ -206,13 +250,17 @@ class SkiddoinkApp {
             const deleteButton = document.createElement('button');
             deleteButton.className = 'delete-button';
             deleteButton.innerHTML = '🗑️';
-            deleteButton.style.display = 'none';
-            
-            // Delete functionality
+
+            // Show delete button by default for video owner, hidden for others
+            const currentUser = localStorage.getItem('username');
+            const isOwner = video.publisher === currentUser;
+            deleteButton.style.display = isOwner ? 'block' : 'none';
+
+            // Modify delete functionality
             deleteButton.addEventListener('click', async (e) => {
                 e.stopPropagation(); // Prevent video play/pause
-                const password = prompt('Enter password to delete:');
-                if (password === '1323') {
+                
+                if (isOwner) {
                     if (confirm('Are you sure you want to delete this video?')) {
                         try {
                             await this.videosRef.child(video.id).remove();
@@ -223,19 +271,32 @@ class SkiddoinkApp {
                         }
                     }
                 } else {
-                    alert('Incorrect password');
+                    const password = prompt('Enter password to delete:');
+                    if (password === '1323') {
+                        if (confirm('Are you sure you want to delete this video?')) {
+                            try {
+                                await this.videosRef.child(video.id).remove();
+                                container.remove();
+                            } catch (error) {
+                                console.error('Error deleting video:', error);
+                                alert('Failed to delete video');
+                            }
+                        }
+                    } else {
+                        alert('Incorrect password');
+                    }
                 }
             });
 
-            // Show/hide delete button with ctrl key
+            // Modify ctrl key event listeners to only apply for non-owners
             document.addEventListener('keydown', (e) => {
-                if (e.ctrlKey) {
+                if (e.ctrlKey && !isOwner) {
                     deleteButton.style.display = 'block';
                 }
             });
 
             document.addEventListener('keyup', (e) => {
-                if (!e.ctrlKey) {
+                if (!e.ctrlKey && !isOwner) {
                     deleteButton.style.display = 'none';
                 }
             });
