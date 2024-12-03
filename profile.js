@@ -202,6 +202,12 @@ class ProfilePage {
                         const title = prompt('Enter a title for your video:', '') || 'Untitled Video';
                         const description = prompt('Enter a description (optional):', '');
 
+                        // Get current user's profile picture from Firebase
+                        const userId = localStorage.getItem('userId');
+                        const userSnapshot = await this.database.ref(`users/${userId}`).once('value');
+                        const userData = userSnapshot.val();
+                        const profilePic = userData?.profilePic || window.DEFAULT_AVATAR;
+
                         const videoData = {
                             url: data.secure_url,
                             title: title,
@@ -210,7 +216,8 @@ class ProfilePage {
                             uploadDate: new Date().toISOString(),
                             views: 0,
                             likes: 0,
-                            publisher: this.username
+                            publisher: this.username,
+                            publisherPic: profilePic  // Use the profile picture from Firebase
                         };
 
                         const newVideoRef = this.videosRef.push();

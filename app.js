@@ -34,6 +34,16 @@ class SkiddoinkApp {
 
         // Load videos
         this.loadVideos();
+
+        // Add new properties for infinite scroll
+        this.currentVideoIndex = 0;
+        this.videosPerLoad = 5;  // Number of videos to load each time
+        this.isLoading = false;  // Flag to prevent multiple simultaneous loads
+        
+        // Add scroll event listener for infinite scroll
+        this.feed.addEventListener('scroll', () => {
+            this.handleScroll();
+        }, { passive: true });
     }
 
     checkUsername() {
@@ -132,6 +142,7 @@ class SkiddoinkApp {
     }
 
     displayVideos(videos) {
+        this.allVideos = videos;  // Store all videos
         this.feed.innerHTML = '';
         
         if (!videos || videos.length === 0) {
@@ -142,129 +153,174 @@ class SkiddoinkApp {
             return;
         }
 
-        // Sort videos: unwatched first, then watched
-        const sortedVideos = [...videos].sort((a, b) => {
-            const aWatched = this.watchedVideos.has(a.id);
-            const bWatched = this.watchedVideos.has(b.id);
-            if (aWatched === bWatched) {
-                return Math.random() - 0.5; // Random sort within each group
-            }
-            return aWatched ? 1 : -1; // Unwatched first
-        });
-
-        // If all videos are watched, reset tracking
-        if (sortedVideos.every(v => this.watchedVideos.has(v.id))) {
+        // Check if all videos have been watched
+        const allVideosWatched = videos.every(video => this.watchedVideos.has(video.id));
+        
+        // Reset watch history if all videos have been watched
+        if (allVideosWatched) {
             this.watchedVideos.clear();
             localStorage.setItem('watchedVideos', '[]');
         }
 
-        sortedVideos.forEach(video => {
-            const container = document.createElement('div');
-            container.className = 'video-container';
-            container.dataset.videoId = video.id;
-            
-            const videoElement = document.createElement('video');
-            videoElement.src = video.url;
-            videoElement.loop = true;
-            videoElement.playsInline = true;
-            videoElement.muted = false;
-            videoElement.controls = false;
+        // Separate videos into watched and unwatched
+        const unwatchedVideos = videos.filter(video => !this.watchedVideos.has(video.id));
+        const watchedVideos = videos.filter(video => this.watchedVideos.has(video.id));
 
-            // Add click handler for play/pause
-            container.addEventListener('click', (e) => {
-                if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
-                    return;
-                }
-                if (videoElement.paused) {
-                    videoElement.play();
-                } else {
-                    videoElement.pause();
-                }
-            });
+        // Shuffle both arrays
+        const shuffleArray = arr => {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
 
-            // Improved intersection observer
-            const observer = new IntersectionObserver(
-                (entries) => {
-                    entries.forEach(entry => {
-                        if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
-                            videoElement.play();
-                            container.classList.add('active');
-                        } else {
-                            videoElement.pause();
-                            videoElement.currentTime = 0;
-                            container.classList.remove('active');
-                        }
-                    });
-                },
-                {
-                    threshold: [0, 0.8, 1],
-                    rootMargin: '-10% 0px'
-                }
-            );
-            observer.observe(container);
+        // Store the sorted videos for infinite scroll
+        this.sortedVideos = [
+            ...shuffleArray(unwatchedVideos),
+            ...shuffleArray(watchedVideos)
+        ];
 
-            // Add interaction buttons
-            const interactionButtons = document.createElement('div');
-            interactionButtons.className = 'interaction-buttons';
-            interactionButtons.innerHTML = `
-                <button class="interaction-btn like-btn">
-                    ️
-                    <span>${video.likes || 0}</span>
-                </button>
-                <button class="interaction-btn comment-btn">
-                    💬
-                    <span>${video.comments?.length || 0}</span>
-                </button>
-                <button class="interaction-btn share-btn">
-                    ↗️
-                    <span>Share</span>
-                </button>
-            `;
+        // Reset current index
+        this.currentVideoIndex = 0;
 
-            // Add video info
-            const infoOverlay = document.createElement('div');
-            infoOverlay.className = 'video-info';
-            infoOverlay.innerHTML = `
-                <div class="video-text">
-                    <div class="publisher-info">
-                        <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile">
-                        <div>
-                            <h3>${video.title || 'Untitled Video'}</h3>
-                            <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
-                        </div>
-                    </div>
-                    <p class="description">${video.description || ''}</p>
-                    <p class="date">Posted ${this.formatDate(video.timestamp)}</p>
-                </div>
-            `;
+        // Load initial batch of videos
+        this.loadMoreVideos();
+        
+        // Scroll to specific video if needed
+        this.scrollToVideo();
+    }
 
-            // Add delete button (hidden by default)
-            const deleteButton = document.createElement('button');
-            deleteButton.className = 'delete-button';
-            deleteButton.innerHTML = '🗑️';
+    // Add new method for loading more videos
+    async loadMoreVideos() {
+        if (this.isLoading) return;
+        this.isLoading = true;
 
-            // Show delete button by default for video owner, hidden for others
-            const currentUser = localStorage.getItem('username');
-            const isOwner = video.publisher === currentUser;
-            deleteButton.style.display = isOwner ? 'block' : 'none';
-
-            // Modify delete functionality
-            deleteButton.addEventListener('click', async (e) => {
-                e.stopPropagation(); // Prevent video play/pause
-                
-                if (isOwner) {
-                    if (confirm('Are you sure you want to delete this video?')) {
-                        try {
-                            await this.videosRef.child(video.id).remove();
-                            container.remove();
-                        } catch (error) {
-                            console.error('Error deleting video:', error);
-                            alert('Failed to delete video');
-                        }
+        try {
+            // If we've reached the end, append the videos again
+            if (this.currentVideoIndex >= this.sortedVideos.length) {
+                // Shuffle a new copy of the videos and append them
+                const shuffleArray = arr => {
+                    const newArr = [...arr];
+                    for (let i = newArr.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
                     }
-                } else {
-                    const password = prompt('Enter password to delete:');
-                    if (password === '1323') {
+                    return newArr;
+                };
+
+                // Add another set of shuffled videos to the end
+                this.sortedVideos = [
+                    ...this.sortedVideos,
+                    ...shuffleArray(this.allVideos)
+                ];
+            }
+
+            const videosToLoad = this.sortedVideos.slice(
+                this.currentVideoIndex,
+                this.currentVideoIndex + this.videosPerLoad
+            );
+
+            for (const video of videosToLoad) {
+                const container = document.createElement('div');
+                container.className = 'video-container';
+                container.dataset.videoId = video.id;
+                
+                const videoElement = document.createElement('video');
+                videoElement.src = video.url;
+                videoElement.loop = true;
+                videoElement.playsInline = true;
+                videoElement.muted = true; // Start muted to prevent autoplay errors
+                videoElement.controls = false;
+
+                // Add click handler for play/pause and unmute
+                container.addEventListener('click', (e) => {
+                    if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
+                        return;
+                    }
+                    if (videoElement.paused) {
+                        videoElement.muted = false; // Unmute when user interacts
+                        videoElement.play().catch(() => {
+                            // If play fails, keep it muted and try again
+                            videoElement.muted = true;
+                            videoElement.play();
+                        });
+                    } else {
+                        videoElement.pause();
+                    }
+                });
+
+                // Improved intersection observer
+                const observer = new IntersectionObserver(
+                    (entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
+                                videoElement.play();
+                                container.classList.add('active');
+                            } else {
+                                videoElement.pause();
+                                videoElement.currentTime = 0;
+                                container.classList.remove('active');
+                            }
+                        });
+                    },
+                    {
+                        threshold: [0, 0.8, 1],
+                        rootMargin: '-10% 0px'
+                    }
+                );
+                observer.observe(container);
+
+                // Add interaction buttons
+                const interactionButtons = document.createElement('div');
+                interactionButtons.className = 'interaction-buttons';
+                interactionButtons.innerHTML = `
+                    <button class="interaction-btn like-btn">
+                        ️
+                        <span>${video.likes || 0}</span>
+                    </button>
+                    <button class="interaction-btn comment-btn">
+                        💬
+                        <span>${video.comments?.length || 0}</span>
+                    </button>
+                    <button class="interaction-btn share-btn">
+                        ↗️
+                        <span>Share</span>
+                    </button>
+                `;
+
+                // Add video info
+                const infoOverlay = document.createElement('div');
+                infoOverlay.className = 'video-info';
+                infoOverlay.innerHTML = `
+                    <div class="video-text">
+                        <div class="publisher-info">
+                            <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile">
+                            <div>
+                                <h3>${video.title || 'Untitled Video'}</h3>
+                                <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
+                            </div>
+                        </div>
+                        <p class="description">${video.description || ''}</p>
+                        <p class="date">Posted ${this.formatDate(video.timestamp)}</p>
+                    </div>
+                `;
+
+                // Add delete button (hidden by default)
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'delete-button';
+                deleteButton.innerHTML = '🗑️';
+
+                // Show delete button by default for video owner, hidden for others
+                const currentUser = localStorage.getItem('username');
+                const isOwner = video.publisher === currentUser;
+                deleteButton.style.display = isOwner ? 'block' : 'none';
+
+                // Modify delete functionality
+                deleteButton.addEventListener('click', async (e) => {
+                    e.stopPropagation(); // Prevent video play/pause
+                    
+                    if (isOwner) {
                         if (confirm('Are you sure you want to delete this video?')) {
                             try {
                                 await this.videosRef.child(video.id).remove();
@@ -275,65 +331,57 @@ class SkiddoinkApp {
                             }
                         }
                     } else {
-                        alert('Incorrect password');
+                        const password = prompt('Enter password to delete:');
+                        if (password === '1323') {
+                            if (confirm('Are you sure you want to delete this video?')) {
+                                try {
+                                    await this.videosRef.child(video.id).remove();
+                                    container.remove();
+                                } catch (error) {
+                                    console.error('Error deleting video:', error);
+                                    alert('Failed to delete video');
+                                }
+                            }
+                        } else {
+                            alert('Incorrect password');
+                        }
                     }
-                }
-            });
+                });
 
-            // Modify ctrl key event listeners to only apply for non-owners
-            document.addEventListener('keydown', (e) => {
-                if (e.ctrlKey && !isOwner) {
-                    deleteButton.style.display = 'block';
-                }
-            });
+                // Modify ctrl key event listeners to only apply for non-owners
+                document.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && !isOwner) {
+                        deleteButton.style.display = 'block';
+                    }
+                });
 
-            document.addEventListener('keyup', (e) => {
-                if (!e.ctrlKey && !isOwner) {
-                    deleteButton.style.display = 'none';
-                }
-            });
+                document.addEventListener('keyup', (e) => {
+                    if (!e.ctrlKey && !isOwner) {
+                        deleteButton.style.display = 'none';
+                    }
+                });
 
-            container.appendChild(videoElement);
-            container.appendChild(interactionButtons);
-            container.appendChild(infoOverlay);
-            container.appendChild(deleteButton);
-            this.feed.appendChild(container);
+                container.appendChild(videoElement);
+                container.appendChild(interactionButtons);
+                container.appendChild(infoOverlay);
+                container.appendChild(deleteButton);
+                this.feed.appendChild(container);
 
-            // Mark video as watched when it plays
-            videoElement.addEventListener('play', () => {
-                if (!this.watchedVideos.has(video.id)) {
-                    this.watchedVideos.add(video.id);
-                    localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
-                }
-            });
-        });
+                // Mark video as watched when it plays
+                videoElement.addEventListener('play', () => {
+                    if (!this.watchedVideos.has(video.id)) {
+                        this.watchedVideos.add(video.id);
+                        localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
+                    }
+                });
+            }
 
-        // Improved scroll handling
-        let isScrolling;
-        let lastScrollTop = 0;
-        
-        this.feed.addEventListener('scroll', () => {
-            window.clearTimeout(isScrolling);
-            
-            const currentScrollTop = this.feed.scrollTop;
-            const windowHeight = window.innerHeight;
-            
-            // Only snap when scrolling has stopped
-            isScrolling = setTimeout(() => {
-                const snapPoint = Math.round(currentScrollTop / windowHeight) * windowHeight;
-                
-                if (currentScrollTop !== snapPoint) {
-                    this.feed.scrollTo({
-                        top: snapPoint,
-                        behavior: 'smooth'
-                    });
-                }
-            }, 50); // Reduced timeout for faster response
-
-            lastScrollTop = currentScrollTop;
-        }, { passive: true });
-
-        this.scrollToVideo();
+            this.currentVideoIndex += this.videosPerLoad;
+            this.isLoading = false;
+        } catch (error) {
+            console.error('Error loading more videos:', error);
+            this.isLoading = false;
+        }
     }
 
     formatDate(timestamp) {
@@ -371,6 +419,41 @@ class SkiddoinkApp {
                     behavior: 'smooth'
                 });
             }, 100);
+        }
+    }
+
+    // Add new method for handling infinite scroll
+    handleScroll() {
+        if (this.isLoading) return;
+
+        const lastVideo = this.feed.lastElementChild;
+        if (!lastVideo) return;
+
+        const lastVideoOffset = lastVideo.offsetTop + lastVideo.clientHeight;
+        const pageOffset = this.feed.scrollTop + this.feed.clientHeight;
+
+        // If we're near the bottom, load more videos
+        if (pageOffset > lastVideoOffset - 1000) {  // 1000px threshold
+            this.loadMoreVideos();
+        }
+    }
+
+    async getPublisherProfilePic(username) {
+        try {
+            const snapshot = await this.database.ref('users')
+                .orderByChild('username')
+                .equalTo(username)
+                .once('value');
+            
+            const userData = snapshot.val();
+            if (userData) {
+                const userId = Object.keys(userData)[0];
+                return userData[userId].profilePic || window.DEFAULT_AVATAR;
+            }
+            return window.DEFAULT_AVATAR;
+        } catch (error) {
+            console.error('Error getting publisher profile pic:', error);
+            return window.DEFAULT_AVATAR;
         }
     }
 }
