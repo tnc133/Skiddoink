@@ -1,6 +1,9 @@
 class ProfilePage {
     constructor() {
-        this.username = localStorage.getItem('username');
+        // Get username from URL parameter or localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        this.username = urlParams.get('user') || localStorage.getItem('username');
+        
         if (!this.username) {
             window.location.href = './index.html';
             return;
@@ -25,31 +28,96 @@ class ProfilePage {
         this.videosRef = this.database.ref('videos');
         
         this.setupUI();
+        this.loadUserData();
         this.loadUserVideos();
     }
 
-    setupUI() {
+    async loadUserData() {
+        try {
+            // Get user data from Firebase
+            const snapshot = await this.database.ref('users')
+                .orderByChild('username')
+                .equalTo(this.username)
+                .once('value');
+            
+            const userData = snapshot.val();
+            if (userData) {
+                const userId = Object.keys(userData)[0];
+                const profilePic = userData[userId].profilePic || DEFAULT_AVATAR;
+                const profilePicElement = document.getElementById('profilePic');
+                profilePicElement.src = profilePic;
+
+                // Only show change photo overlay on own profile
+                const isOwnProfile = this.username === localStorage.getItem('username');
+                const overlay = document.querySelector('.profile-pic-overlay');
+                const profilePicContainer = document.querySelector('.profile-pic');
+                
+                if (overlay && profilePicContainer) {
+                    overlay.style.display = isOwnProfile ? 'flex' : 'none';
+                    profilePicContainer.style.cursor = isOwnProfile ? 'pointer' : 'default';
+                    
+                    // Add click handler for profile picture change
+                    if (isOwnProfile) {
+                        profilePicContainer.addEventListener('click', () => {
+                            this.handleProfilePicUpload();
+                        });
+                    }
+                }
+            } else {
+                document.getElementById('profilePic').src = DEFAULT_AVATAR;
+            }
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            document.getElementById('profilePic').src = DEFAULT_AVATAR;
+        }
+    }
+
+    async setupUI() {
         document.querySelector('.profile-username').textContent = `@${this.username}`;
         
-        // Setup upload buttons
-        const uploadBtn = document.getElementById('uploadBtn');
-        const profileUploadBtn = document.getElementById('profileUploadBtn');
+        // Only show upload and settings buttons if it's the user's own profile
+        const isOwnProfile = this.username === localStorage.getItem('username');
         
-        [uploadBtn, profileUploadBtn].forEach(btn => {
-            if (btn) {
-                btn.addEventListener('click', () => this.handleUpload());
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadSection = document.querySelector('.upload-section');
+        const settingsBtn = document.getElementById('settingsBtn');
+        
+        // Hide buttons for other users' profiles
+        if (!isOwnProfile) {
+            if (uploadSection) uploadSection.style.display = 'none';
+            if (settingsBtn) settingsBtn.style.display = 'none';
+        } else {
+            // Setup upload button
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', () => this.handleUpload());
             }
-        });
 
-        // Setup sign out
-        const signoutBtn = document.getElementById('signoutBtn');
-        if (signoutBtn) {
-            signoutBtn.addEventListener('click', () => {
-                if (confirm('Are you sure you want to sign out?')) {
-                    localStorage.clear();
-                    window.location.href = './index.html';
-                }
-            });
+            // Setup settings
+            const settingsModal = document.querySelector('.settings-modal');
+            if (settingsBtn && settingsModal) {
+                settingsBtn.addEventListener('click', () => {
+                    settingsModal.style.display = 'flex';
+                });
+
+                document.querySelector('.close-settings')?.addEventListener('click', () => {
+                    settingsModal.style.display = 'none';
+                });
+
+                document.getElementById('changeProfilePic')?.addEventListener('click', () => {
+                    this.handleProfilePicUpload();
+                });
+
+                document.getElementById('updatePassword')?.addEventListener('click', () => {
+                    this.handlePasswordUpdate();
+                });
+
+                document.getElementById('signoutBtn')?.addEventListener('click', () => {
+                    if (confirm('Are you sure you want to sign out?')) {
+                        localStorage.clear();
+                        window.location.href = './index.html';
+                    }
+                });
+            }
         }
     }
 
@@ -172,6 +240,87 @@ class ProfilePage {
                 }
             }
         };
+    }
+
+    async handleProfilePicUpload() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.click();
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', 'skiddoink_uploads');
+                formData.append('cloud_name', 'dz8kxt0gy');
+
+                const response = await fetch(
+                    'https://api.cloudinary.com/v1_1/dz8kxt0gy/image/upload',
+                    {
+                        method: 'POST',
+                        body: formData
+                    }
+                );
+
+                const data = await response.json();
+                
+                // Update profile picture URL in Firebase
+                const userId = localStorage.getItem('userId');
+                await this.database.ref(`users/${userId}/profilePic`).set(data.secure_url);
+                
+                // Update all videos by this user to include the profile pic
+                const videosSnapshot = await this.videosRef
+                    .orderByChild('publisher')
+                    .equalTo(this.username)
+                    .once('value');
+                
+                const updates = {};
+                Object.entries(videosSnapshot.val() || {}).forEach(([videoId, video]) => {
+                    updates[`videos/${videoId}/publisherPic`] = data.secure_url;
+                });
+                
+                if (Object.keys(updates).length > 0) {
+                    await this.database.ref().update(updates);
+                }
+                
+                // Update UI
+                document.getElementById('profilePic').src = data.secure_url;
+                
+            } catch (error) {
+                console.error('Error uploading profile picture:', error);
+                alert('Failed to upload profile picture');
+            }
+        };
+    }
+
+    async handlePasswordUpdate() {
+        const currentPassword = document.getElementById('currentPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        const errorDisplay = document.querySelector('.settings-error');
+
+        try {
+            if (newPassword !== confirmPassword) {
+                throw new Error('New passwords do not match');
+            }
+
+            if (newPassword.length < 6) {
+                throw new Error('Password must be at least 6 characters');
+            }
+
+            const auth = new AuthManager();
+            await auth.updatePassword(currentPassword, newPassword);
+            
+            alert('Password updated successfully');
+            document.querySelector('.settings-modal').style.display = 'none';
+            
+        } catch (error) {
+            errorDisplay.textContent = error.message;
+        }
     }
 }
 

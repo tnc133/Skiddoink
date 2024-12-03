@@ -10,23 +10,24 @@
     <div class="app">
         <div class="header">
             <h1>Skiddoink</h1>
-            <button id="uploadBtn">Upload Video</button>
+            <a href="./profile.html" class="username-display"></a>
         </div>
         
         <div class="feed">
             <!-- Videos will be inserted here -->
+            <div class="loading-message">Loading videos...</div>
         </div>
     </div>
 
-    <!-- Cloudinary Upload Widget -->
-    <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
-    
-    <!-- Firebase scripts (updated versions) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
     
-    <!-- Your app.js -->
+    <!-- Initialize Firebase first -->
+    <script src="firebase-config.js"></script>
+    
+    <!-- App Scripts -->
+    <script src="constants.js"></script>
     <script src="auth.js"></script>
     <script src="app.js"></script>
 </body>

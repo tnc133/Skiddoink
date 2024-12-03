@@ -12,12 +12,21 @@
         <div class="header">
             <a href="javascript:history.back()" class="back-btn">←</a>
             <h1>Profile</h1>
-            <button id="uploadBtn">Upload Video</button>
         </div>
         
         <div class="profile-container">
             <div class="profile-header">
-                <h2 class="profile-username"></h2>
+                <div class="profile-info">
+                    <div class="profile-pic">
+                        <img src="default-avatar.png" alt="Profile" id="profilePic">
+                        <div class="profile-pic-overlay">Change Photo</div>
+                    </div>
+                    <h2 class="profile-username"></h2>
+                </div>
+            </div>
+            
+            <div class="upload-section">
+                <button id="uploadBtn" class="upload-btn">Upload Video</button>
             </div>
             
             <div class="videos-section">
@@ -27,16 +36,39 @@
                 </div>
                 
                 <div class="no-videos-message" style="display: none;">
-                    <p>No videos, consider uploading one</p>
-                    <button id="profileUploadBtn">Upload Video</button>
+                    <p>No videos yet</p>
                 </div>
             </div>
 
-            <button id="signoutBtn" class="signout-btn">Sign Out</button>
+            <div class="profile-menu">
+                <button id="settingsBtn" class="settings-btn">⚙️ Settings</button>
+            </div>
+
+            <!-- Settings Modal -->
+            <div class="settings-modal" style="display: none;">
+                <div class="settings-content">
+                    <h3>Settings</h3>
+                    <div class="settings-section">
+                        <h4>Profile Picture</h4>
+                        <button id="changeProfilePic">Change Profile Picture</button>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Change Password</h4>
+                        <input type="password" id="currentPassword" placeholder="Current Password">
+                        <input type="password" id="newPassword" placeholder="New Password">
+                        <input type="password" id="confirmPassword" placeholder="Confirm New Password">
+                        <button id="updatePassword">Update Password</button>
+                        <p class="settings-error"></p>
+                    </div>
+                    <button id="signoutBtn" class="signout-btn">Sign Out</button>
+                    <button class="close-settings">Close</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Same scripts as index.html -->
+    <script src="constants.js"></script>
     <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>

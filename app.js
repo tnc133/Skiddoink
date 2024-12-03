@@ -1,58 +1,39 @@
+const DEFAULT_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSI1MCIgZmlsbD0iIzQ0NDQ0NCIvPjxwYXRoIGQ9Ik01MCAyNUMzNi4xOTI5IDI1IDI1IDM2LjE5MjkgMjUgNTBDMjUgNjMuODA3MSAzNi4xOTI5IDc1IDUwIDc1QzYzLjgwNzEgNzUgNzUgNjMuODA3MSA3NSA1MEM3NSAzNi4xOTI5IDYzLjgwNzEgMjUgNTAgMjVaTTQwLjUgNDQuNUM0Mi40MzMgNDQuNSA0NCA0Mi45MzMgNDQgNDFDNDQgMzkuMDY3IDQyLjQzMyAzNy41IDQwLjUgMzcuNUMzOC41NjcgMzcuNSAzNyAzOS4wNjcgMzcgNDFDMzcgNDIuOTMzIDM4LjU2NyA0NC41IDQwLjUgNDQuNVpNNTkuNSA0NC41QzYxLjQzMyA0NC41IDYzIDQyLjkzMyA2MyA0MUM2MyAzOS4wNjcgNjEuNDMzIDM3LjUgNTkuNSAzNy41QzU3LjU2NyAzNy41IDU2IDM5LjA2NyA1NiA0MUM1NiA0Mi45MzMgNTcuNTY3IDQ0LjUgNTkuNSA0NC41Wk01MCA2Ny41QzU1LjUyMjggNjcuNSA2MCA2My4wMjI4IDYwIDU3LjVINDBDNDAgNjMuMDIyOCA0NC40NzcyIDY3LjUgNTAgNjcuNVoiIGZpbGw9IiNGRkYiLz48L3N2Zz4=';
+
 class SkiddoinkApp {
     constructor() {
+        if (!firebase.apps.length) {
+            console.error('Firebase not initialized');
+            return;
+        }
+
+        // Check for username first
+        if (!localStorage.getItem('username')) {
+            this.checkUsername();
+            return;
+        }
+
         this.feed = document.querySelector('.feed');
         if (!this.feed) {
             console.error('Feed element not found');
             return;
         }
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyAktux6amfQANJPyo1Z5ppGw4oSmtzk4AU",
-            authDomain: "skiddoink.firebaseapp.com",
-            databaseURL: "https://skiddoink-default-rtdb.firebaseio.com",
-            projectId: "skiddoink",
-            storageBucket: "skiddoink.appspot.com",
-            messagingSenderId: "471225425456",
-            appId: "1:471225425456:web:39d6d27c7bcd72156197f5"
-        };
-
-        // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-
         // Initialize Firebase services
         this.database = firebase.database();
-        this.storage = firebase.storage();
         this.videosRef = this.database.ref('videos');
 
-        // Add username check after Firebase initialization
-        this.checkUsername();
-
-        // Initialize upload button
-        const uploadBtn = document.getElementById('uploadBtn');
-        if (uploadBtn) {
-            uploadBtn.addEventListener('click', () => this.handleUpload());
+        // Setup username display
+        this.usernameDisplay = document.querySelector('.username-display');
+        if (this.usernameDisplay) {
+            this.usernameDisplay.textContent = `@${localStorage.getItem('username')}`;
         }
 
-        // Add username display
-        this.usernameDisplay = document.createElement('a');
-        this.usernameDisplay.className = 'username-display';
-        this.usernameDisplay.textContent = localStorage.getItem('username') || 'Guest';
-        this.usernameDisplay.href = './profile.html';
-        uploadBtn.parentElement.insertBefore(this.usernameDisplay, uploadBtn);
-
-        this.loadVideos();
-
-        // Update base path for GitHub Pages
-        this.basePath = location.pathname.includes('github.io') ? 
-            '/your-repo-name/' : 
-            './';
-        
-        // Update profile link
-        this.usernameDisplay.href = this.basePath + 'profile.html';
-
+        // Initialize watched videos tracking
         this.watchedVideos = new Set(JSON.parse(localStorage.getItem('watchedVideos') || '[]'));
+
+        // Load videos
+        this.loadVideos();
     }
 
     checkUsername() {
@@ -67,15 +48,15 @@ class SkiddoinkApp {
                         <button class="auth-tab" data-tab="signup">Sign Up</button>
                     </div>
                     <div class="auth-form signin-form">
-                        <input type="text" id="usernameInput" maxlength="20" placeholder="Username">
-                        <input type="password" id="passwordInput" placeholder="Password">
-                        <button id="submitAuth">Sign In</button>
+                        <input type="text" id="signinUsername" placeholder="Username">
+                        <input type="password" id="signinPassword" placeholder="Password">
+                        <button id="signinBtn">Sign In</button>
                         <p class="auth-error"></p>
                     </div>
                     <div class="auth-form signup-form" style="display: none;">
-                        <input type="text" id="signupUsername" maxlength="20" placeholder="Username">
+                        <input type="text" id="signupUsername" placeholder="Username">
                         <input type="password" id="signupPassword" placeholder="Password">
-                        <button id="submitSignup">Sign Up</button>
+                        <button id="signupBtn">Sign Up</button>
                         <p class="auth-error"></p>
                     </div>
                 </div>
@@ -83,7 +64,6 @@ class SkiddoinkApp {
             document.body.appendChild(modal);
 
             const auth = new AuthManager();
-            const errorDisplay = modal.querySelector('.auth-error');
 
             // Handle tab switching
             modal.querySelectorAll('.auth-tab').forEach(tab => {
@@ -97,111 +77,45 @@ class SkiddoinkApp {
             });
 
             // Handle sign in
-            modal.querySelector('#submitAuth').addEventListener('click', async () => {
-                const username = modal.querySelector('#usernameInput').value;
-                const password = modal.querySelector('#passwordInput').value;
+            modal.querySelector('#signinBtn').addEventListener('click', async () => {
+                const username = modal.querySelector('#signinUsername').value;
+                const password = modal.querySelector('#signinPassword').value;
 
                 try {
                     await auth.signIn(username, password);
                     document.body.removeChild(modal);
-                    this.usernameDisplay.textContent = username;
+                    window.location.reload();
                 } catch (error) {
-                    errorDisplay.textContent = error.message;
+                    modal.querySelector('.signin-form .auth-error').textContent = error.message;
                 }
             });
 
             // Handle sign up
-            modal.querySelector('#submitSignup').addEventListener('click', async () => {
+            modal.querySelector('#signupBtn').addEventListener('click', async () => {
                 const username = modal.querySelector('#signupUsername').value;
                 const password = modal.querySelector('#signupPassword').value;
 
                 try {
                     await auth.signUp(username, password);
                     document.body.removeChild(modal);
-                    this.usernameDisplay.textContent = username;
+                    window.location.reload();
                 } catch (error) {
                     modal.querySelector('.signup-form .auth-error').textContent = error.message;
                 }
             });
-        }
-    }
 
-    async handleUpload() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'video/*';
-        
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                const loadingOverlay = document.createElement('div');
-                loadingOverlay.className = 'loading-overlay';
-                loadingOverlay.innerHTML = `
-                    <div class="loading-spinner"></div>
-                    <p>Uploading video...</p>
-                `;
-                document.body.appendChild(loadingOverlay);
-
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('upload_preset', 'skiddoink_uploads');
-                formData.append('api_key', '255245241992774');
-                formData.append('timestamp', Math.round(Date.now() / 1000));
-                formData.append('cloud_name', 'dz8kxt0gy');
-                
-                const uploadUrl = 'https://api.cloudinary.com/v1_1/dz8kxt0gy/video/upload';
-                
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', uploadUrl);
-                
-                xhr.onload = async () => {
-                    if (xhr.status === 200) {
-                        const data = JSON.parse(xhr.responseText);
-                        
-                        const title = prompt('Enter a title for your video:', '') || 'Untitled Video';
-                        const description = prompt('Enter a description (optional):', '');
-
-                        const videoData = {
-                            url: data.secure_url,
-                            title: title,
-                            description: description,
-                            timestamp: Date.now(),
-                            uploadDate: new Date().toISOString(),
-                            views: 0,
-                            likes: 0,
-                            publisher: localStorage.getItem('username') || '[Deleted User]'
-                        };
-
-                        const newVideoRef = this.videosRef.push();
-                        await newVideoRef.set(videoData);
-
-                        alert('Video added successfully!');
-                    } else {
-                        throw new Error('Upload failed');
+            // Add keyboard event listeners for both forms
+            ['signinUsername', 'signinPassword', 'signupUsername', 'signupPassword'].forEach(id => {
+                const input = modal.querySelector(`#${id}`);
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const isSignIn = id.startsWith('signin');
+                        const btn = modal.querySelector(isSignIn ? '#signinBtn' : '#signupBtn');
+                        btn.click();
                     }
-                    document.body.removeChild(loadingOverlay);
-                };
-                
-                xhr.onerror = () => {
-                    console.error('Error:', xhr.statusText);
-                    alert('Upload failed');
-                    document.body.removeChild(loadingOverlay);
-                };
-                
-                xhr.send(formData);
-
-            } catch (error) {
-                console.error('Error:', error);
-                alert(`Upload failed: ${error.message}`);
-                if (document.body.querySelector('.loading-overlay')) {
-                    document.body.removeChild(document.body.querySelector('.loading-overlay'));
-                }
-            }
-        };
-
-        input.click();
+                });
+            });
+        }
     }
 
     loadVideos() {
@@ -220,6 +134,14 @@ class SkiddoinkApp {
     displayVideos(videos) {
         this.feed.innerHTML = '';
         
+        if (!videos || videos.length === 0) {
+            const noVideos = document.createElement('div');
+            noVideos.className = 'loading-message';
+            noVideos.textContent = 'No videos available';
+            this.feed.appendChild(noVideos);
+            return;
+        }
+
         // Sort videos: unwatched first, then watched
         const sortedVideos = [...videos].sort((a, b) => {
             const aWatched = this.watchedVideos.has(a.id);
@@ -286,7 +208,7 @@ class SkiddoinkApp {
             interactionButtons.className = 'interaction-buttons';
             interactionButtons.innerHTML = `
                 <button class="interaction-btn like-btn">
-                    ❤️
+                    ️
                     <span>${video.likes || 0}</span>
                 </button>
                 <button class="interaction-btn comment-btn">
@@ -304,8 +226,13 @@ class SkiddoinkApp {
             infoOverlay.className = 'video-info';
             infoOverlay.innerHTML = `
                 <div class="video-text">
-                    <h3>${video.title || 'Untitled Video'}</h3>
-                    <p class="publisher">@${video.publisher || '[Deleted User]'}</p>
+                    <div class="publisher-info">
+                        <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile">
+                        <div>
+                            <h3>${video.title || 'Untitled Video'}</h3>
+                            <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
+                        </div>
+                    </div>
                     <p class="description">${video.description || ''}</p>
                     <p class="date">Posted ${this.formatDate(video.timestamp)}</p>
                 </div>

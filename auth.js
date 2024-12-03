@@ -1,5 +1,18 @@
 class AuthManager {
     constructor() {
+        // Initialize Firebase if not already initialized
+        if (!firebase.apps.length) {
+            const firebaseConfig = {
+                apiKey: "AIzaSyAktux6amfQANJPyo1Z5ppGw4oSmtzk4AU",
+                authDomain: "skiddoink.firebaseapp.com",
+                databaseURL: "https://skiddoink-default-rtdb.firebaseio.com",
+                projectId: "skiddoink",
+                storageBucket: "skiddoink.appspot.com",
+                messagingSenderId: "471225425456",
+                appId: "1:471225425456:web:39d6d27c7bcd72156197f5"
+            };
+            firebase.initializeApp(firebaseConfig);
+        }
         this.database = firebase.database();
         this.usersRef = this.database.ref('users');
     }
@@ -58,5 +71,20 @@ class AuthManager {
         return Array.from(new Uint8Array(hash))
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
+    }
+
+    async updatePassword(currentPassword, newPassword) {
+        const username = localStorage.getItem('username');
+        const userId = localStorage.getItem('userId');
+        
+        const userData = (await this.usersRef.child(userId).once('value')).val();
+        
+        if (await this.hashPassword(currentPassword) !== userData.password) {
+            throw new Error('Current password is incorrect');
+        }
+        
+        await this.usersRef.child(userId).update({
+            password: await this.hashPassword(newPassword)
+        });
     }
 } 
