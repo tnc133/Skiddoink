@@ -59,6 +59,24 @@ class SkiddoinkApp {
 
         // Add flag to prevent reload on like updates
         this.isLikeUpdate = false;
+
+        // Add flag for first interaction
+        this.hasUserInteracted = false;
+        
+        // Listen for any user interaction
+        document.addEventListener('click', () => {
+            if (!this.hasUserInteracted) {
+                console.log('First user interaction detected');
+                this.hasUserInteracted = true;
+                // Try to unmute any playing video
+                const activeVideo = document.querySelector('.video-container.active video');
+                if (activeVideo) {
+                    console.log('Found active video, attempting to unmute');
+                    activeVideo.muted = false;
+                    activeVideo.volume = 1;
+                }
+            }
+        }, { once: true });
     }
 
     checkUsername() {
@@ -262,24 +280,71 @@ class SkiddoinkApp {
                 videoElement.src = video.url;
                 videoElement.loop = true;
                 videoElement.playsInline = true;
-                videoElement.muted = true; // Start muted to prevent autoplay errors
+                videoElement.muted = !this.hasUserInteracted;
+                videoElement.volume = 1;
                 videoElement.controls = false;
+                videoElement.setAttribute('playsinline', '');
+                videoElement.setAttribute('webkit-playsinline', '');
 
-                // Update the video container click handler
+                // Add more debugging events
+                videoElement.addEventListener('loadstart', () => {
+                    console.log('Video loadstart:', {
+                        id: video.id,
+                        muted: videoElement.muted,
+                        hasInteracted: this.hasUserInteracted
+                    });
+                });
+
+                videoElement.addEventListener('canplay', () => {
+                    console.log('Video canplay:', {
+                        id: video.id,
+                        muted: videoElement.muted,
+                        hasInteracted: this.hasUserInteracted
+                    });
+                });
+
+                videoElement.addEventListener('play', () => {
+                    console.log('Video play event:', {
+                        id: video.id,
+                        muted: videoElement.muted,
+                        hasInteracted: this.hasUserInteracted,
+                        userActivation: navigator.userActivation?.hasBeenActive
+                    });
+                });
+
+                // Add debugging events
+                videoElement.addEventListener('volumechange', () => {
+                    console.log('Volume changed:', {
+                        id: video.id,
+                        muted: videoElement.muted,
+                        volume: videoElement.volume,
+                        autoplay: videoElement.autoplay
+                    });
+                });
+
+                // Add click handler back for debugging
                 container.addEventListener('click', (e) => {
-                    // Don't handle clicks if they're from interaction buttons or info
                     if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
                         return;
                     }
 
-                    // Only handle clicks directly on the video or container
                     if (e.target === container || e.target === videoElement) {
+                        console.log('Click state:', {
+                            id: video.id,
+                            muted: videoElement.muted,
+                            volume: videoElement.volume,
+                            paused: videoElement.paused
+                        });
+
                         if (videoElement.paused) {
-                            videoElement.muted = false; // Unmute when user interacts
-                            videoElement.play().catch(() => {
-                                // If play fails, keep it muted and try again
-                                videoElement.muted = true;
-                                videoElement.play();
+                            videoElement.play().then(() => {
+                                console.log('Manual play success:', {
+                                    id: video.id,
+                                    muted: videoElement.muted,
+                                    volume: videoElement.volume
+                                });
+                            }).catch(error => {
+                                console.error('Manual play failed:', error);
                             });
                         } else {
                             videoElement.pause();
@@ -287,35 +352,55 @@ class SkiddoinkApp {
                     }
                 });
 
-                // Improved intersection observer
+                // Update the Intersection Observer
                 const observer = new IntersectionObserver(
                     (entries) => {
                         if (this.isScrollLocked) return;
 
                         entries.forEach(entry => {
                             if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
-                                // Don't switch videos during interaction
                                 if (!container.hasAttribute('data-user-interaction')) {
                                     const currentlyPlaying = this.feed.querySelector('.video-container.active');
                                     if (currentlyPlaying && currentlyPlaying !== container) {
                                         const video = currentlyPlaying.querySelector('video');
+                                        console.log('Stopping previous video:', {
+                                            id: currentlyPlaying.dataset.videoId,
+                                            muted: video.muted,
+                                            hasInteracted: this.hasUserInteracted
+                                        });
                                         video.pause();
                                         video.currentTime = 0;
                                         currentlyPlaying.classList.remove('active');
                                     }
-                                    
-                                    videoElement.play();
+
+                                    console.log('Starting new video:', {
+                                        id: video.id,
+                                        muted: videoElement.muted,
+                                        hasInteracted: this.hasUserInteracted
+                                    });
+
+                                    videoElement.currentTime = 0;
+                                    videoElement.volume = 1;
+                                    // Only unmute if user has interacted
+                                    videoElement.muted = !this.hasUserInteracted;
+
+                                    videoElement.play().then(() => {
+                                        console.log('Video started successfully:', {
+                                            id: video.id,
+                                            muted: videoElement.muted,
+                                            hasInteracted: this.hasUserInteracted
+                                        });
+                                    }).catch(error => {
+                                        console.error('Failed to start video:', error);
+                                    });
+
                                     container.classList.add('active');
                                 }
-                            } else if (!entry.isIntersecting) {
-                                videoElement.pause();
-                                videoElement.currentTime = 0;
-                                container.classList.remove('active');
                             }
                         });
                     },
                     {
-                        threshold: [0, 0.8],
+                        threshold: [0.8],
                         rootMargin: '-10% 0px'
                     }
                 );
