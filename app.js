@@ -32,6 +32,15 @@ class SkiddoinkApp {
         // Initialize watched videos tracking
         this.watchedVideos = new Set(JSON.parse(localStorage.getItem('watchedVideos') || '[]'));
 
+        // Initialize liked videos tracking with user-specific key
+        const username = localStorage.getItem('username');
+        this.likedVideosKey = `likedVideos_${username}`;
+        this.likedVideos = new Set(JSON.parse(localStorage.getItem(this.likedVideosKey) || '[]'));
+
+        // Also store likes in Firebase for persistence across devices
+        this.userLikesRef = this.database.ref(`userLikes/${username}`);
+        this.loadUserLikes();
+
         // Load videos
         this.loadVideos();
 
@@ -44,6 +53,12 @@ class SkiddoinkApp {
         this.feed.addEventListener('scroll', () => {
             this.handleScroll();
         }, { passive: true });
+
+        // Add scroll lock property
+        this.isScrollLocked = false;
+
+        // Add flag to prevent reload on like updates
+        this.isLikeUpdate = false;
     }
 
     checkUsername() {
@@ -136,13 +151,18 @@ class SkiddoinkApp {
                     ...video,
                     id
                 }));
-                this.displayVideos(videos);
+                
+                // Only reload videos if it's not a like update
+                if (!this.isLikeUpdate) {
+                    this.displayVideos(videos);
+                }
+                this.isLikeUpdate = false;
             }
         });
     }
 
     displayVideos(videos) {
-        this.allVideos = videos;  // Store all videos
+        this.allVideos = videos;
         this.feed.innerHTML = '';
         
         if (!videos || videos.length === 0) {
@@ -153,42 +173,54 @@ class SkiddoinkApp {
             return;
         }
 
-        // Check if all videos have been watched
-        const allVideosWatched = videos.every(video => this.watchedVideos.has(video.id));
-        
-        // Reset watch history if all videos have been watched
-        if (allVideosWatched) {
-            this.watchedVideos.clear();
-            localStorage.setItem('watchedVideos', '[]');
-        }
+        // Get the active video ID if any
+        const activeVideoId = localStorage.getItem('activeVideoId');
+        const shouldScrollToVideo = localStorage.getItem('scrollToVideo');
 
-        // Separate videos into watched and unwatched
-        const unwatchedVideos = videos.filter(video => !this.watchedVideos.has(video.id));
-        const watchedVideos = videos.filter(video => this.watchedVideos.has(video.id));
-
-        // Shuffle both arrays
-        const shuffleArray = arr => {
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
+        if (activeVideoId && shouldScrollToVideo) {
+            // Find the active video
+            const activeVideo = videos.find(v => v.id === activeVideoId);
+            if (activeVideo) {
+                // Put the active video first
+                this.sortedVideos = [
+                    activeVideo,
+                    ...videos.filter(v => v.id !== activeVideoId)
+                ];
+            } else {
+                this.sortedVideos = [...videos];
             }
-            return arr;
-        };
+            // Clear the scroll flag
+            localStorage.removeItem('scrollToVideo');
+        } else {
+            // Normal video sorting logic
+            const allVideosWatched = videos.every(video => this.watchedVideos.has(video.id));
+            if (allVideosWatched) {
+                this.watchedVideos.clear();
+                localStorage.setItem('watchedVideos', '[]');
+            }
 
-        // Store the sorted videos for infinite scroll
-        this.sortedVideos = [
-            ...shuffleArray(unwatchedVideos),
-            ...shuffleArray(watchedVideos)
-        ];
+            const unwatchedVideos = videos.filter(video => !this.watchedVideos.has(video.id));
+            const watchedVideos = videos.filter(video => this.watchedVideos.has(video.id));
+
+            const shuffleArray = arr => {
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                return arr;
+            };
+
+            this.sortedVideos = [
+                ...shuffleArray(unwatchedVideos),
+                ...shuffleArray(watchedVideos)
+            ];
+        }
 
         // Reset current index
         this.currentVideoIndex = 0;
 
         // Load initial batch of videos
         this.loadMoreVideos();
-        
-        // Scroll to specific video if needed
-        this.scrollToVideo();
     }
 
     // Add new method for loading more videos
@@ -233,31 +265,49 @@ class SkiddoinkApp {
                 videoElement.muted = true; // Start muted to prevent autoplay errors
                 videoElement.controls = false;
 
-                // Add click handler for play/pause and unmute
+                // Update the video container click handler
                 container.addEventListener('click', (e) => {
+                    // Don't handle clicks if they're from interaction buttons or info
                     if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
                         return;
                     }
-                    if (videoElement.paused) {
-                        videoElement.muted = false; // Unmute when user interacts
-                        videoElement.play().catch(() => {
-                            // If play fails, keep it muted and try again
-                            videoElement.muted = true;
-                            videoElement.play();
-                        });
-                    } else {
-                        videoElement.pause();
+
+                    // Only handle clicks directly on the video or container
+                    if (e.target === container || e.target === videoElement) {
+                        if (videoElement.paused) {
+                            videoElement.muted = false; // Unmute when user interacts
+                            videoElement.play().catch(() => {
+                                // If play fails, keep it muted and try again
+                                videoElement.muted = true;
+                                videoElement.play();
+                            });
+                        } else {
+                            videoElement.pause();
+                        }
                     }
                 });
 
                 // Improved intersection observer
                 const observer = new IntersectionObserver(
                     (entries) => {
+                        if (this.isScrollLocked) return;
+
                         entries.forEach(entry => {
                             if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
-                                videoElement.play();
-                                container.classList.add('active');
-                            } else {
+                                // Don't switch videos during interaction
+                                if (!container.hasAttribute('data-user-interaction')) {
+                                    const currentlyPlaying = this.feed.querySelector('.video-container.active');
+                                    if (currentlyPlaying && currentlyPlaying !== container) {
+                                        const video = currentlyPlaying.querySelector('video');
+                                        video.pause();
+                                        video.currentTime = 0;
+                                        currentlyPlaying.classList.remove('active');
+                                    }
+                                    
+                                    videoElement.play();
+                                    container.classList.add('active');
+                                }
+                            } else if (!entry.isIntersecting) {
                                 videoElement.pause();
                                 videoElement.currentTime = 0;
                                 container.classList.remove('active');
@@ -265,7 +315,7 @@ class SkiddoinkApp {
                         });
                     },
                     {
-                        threshold: [0, 0.8, 1],
+                        threshold: [0, 0.8],
                         rootMargin: '-10% 0px'
                     }
                 );
@@ -274,9 +324,10 @@ class SkiddoinkApp {
                 // Add interaction buttons
                 const interactionButtons = document.createElement('div');
                 interactionButtons.className = 'interaction-buttons';
+                const isLiked = this.likedVideos.has(video.id);
                 interactionButtons.innerHTML = `
-                    <button class="interaction-btn like-btn">
-                        ️
+                    <button class="interaction-btn like-btn ${isLiked ? 'liked' : ''}">
+                        ${isLiked ? '❤️' : '🤍'}
                         <span>${video.likes || 0}</span>
                     </button>
                     <button class="interaction-btn comment-btn">
@@ -288,6 +339,88 @@ class SkiddoinkApp {
                         <span>Share</span>
                     </button>
                 `;
+
+                // Add like button handler
+                const likeBtn = interactionButtons.querySelector('.like-btn');
+                likeBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Lock scroll and mark interaction
+                    this.isScrollLocked = true;
+                    container.setAttribute('data-user-interaction', 'true');
+                    
+                    // Keep the current video playing
+                    const wasPlaying = !videoElement.paused;
+                    
+                    if (!localStorage.getItem('username')) {
+                        alert('Please sign in to like videos');
+                        return;
+                    }
+
+                    try {
+                        this.isLikeUpdate = true;
+                        const videoRef = this.videosRef.child(video.id);
+                        const isLiked = this.likedVideos.has(video.id);
+
+                        // Get current likes count from Firebase
+                        const snapshot = await videoRef.once('value');
+                        const currentLikes = snapshot.val()?.likes || 0;
+
+                        if (isLiked) {
+                            // Unlike
+                            await Promise.all([
+                                videoRef.update({ likes: currentLikes - 1 }),
+                                this.userLikesRef.child(video.id).remove()
+                            ]);
+                            this.likedVideos.delete(video.id);
+                            
+                            // Update all instances of this video in the feed
+                            document.querySelectorAll(`.video-container[data-video-id="${video.id}"] .like-btn`).forEach(btn => {
+                                btn.classList.remove('liked');
+                                btn.innerHTML = `🤍<span>${currentLikes - 1}</span>`;
+                            });
+                            
+                            video.likes = currentLikes - 1;
+                        } else {
+                            // Like
+                            await Promise.all([
+                                videoRef.update({ likes: currentLikes + 1 }),
+                                this.userLikesRef.child(video.id).set(true)
+                            ]);
+                            this.likedVideos.add(video.id);
+                            
+                            // Update all instances of this video in the feed
+                            document.querySelectorAll(`.video-container[data-video-id="${video.id}"] .like-btn`).forEach(btn => {
+                                btn.classList.add('liked');
+                                btn.innerHTML = `❤️<span>${currentLikes + 1}</span>`;
+                            });
+                            
+                            video.likes = currentLikes + 1;
+                        }
+
+                        // Update localStorage with user-specific key
+                        localStorage.setItem(this.likedVideosKey, JSON.stringify([...this.likedVideos]));
+
+                        // Restore video state and unlock after delay
+                        setTimeout(() => {
+                            if (wasPlaying) {
+                                videoElement.play();
+                            }
+                            this.isScrollLocked = false;
+                            container.removeAttribute('data-user-interaction');
+                        }, 100);
+
+                    } catch (error) {
+                        console.error('Error updating likes:', error);
+                        alert('Failed to update like');
+                        if (wasPlaying) {
+                            videoElement.play();
+                        }
+                        this.isScrollLocked = false;
+                        container.removeAttribute('data-user-interaction');
+                    }
+                });
 
                 // Add video info
                 const infoOverlay = document.createElement('div');
@@ -393,35 +526,6 @@ class SkiddoinkApp {
         });
     }
 
-    scrollToVideo() {
-        const activeVideoId = localStorage.getItem('activeVideoId');
-        const shouldScrollToVideo = localStorage.getItem('scrollToVideo');
-        
-        if (activeVideoId && shouldScrollToVideo) {
-            // Clear the scroll flag
-            localStorage.removeItem('scrollToVideo');
-            
-            // Find the video container with this ID
-            const videos = document.querySelectorAll('.video-container');
-            let targetIndex = 0;
-            
-            videos.forEach((container, index) => {
-                if (container.dataset.videoId === activeVideoId) {
-                    targetIndex = index;
-                }
-            });
-            
-            // Scroll to the video after a short delay to ensure everything is loaded
-            setTimeout(() => {
-                const targetScroll = targetIndex * window.innerHeight;
-                this.feed.scrollTo({
-                    top: targetScroll,
-                    behavior: 'smooth'
-                });
-            }, 100);
-        }
-    }
-
     // Add new method for handling infinite scroll
     handleScroll() {
         if (this.isLoading) return;
@@ -454,6 +558,23 @@ class SkiddoinkApp {
         } catch (error) {
             console.error('Error getting publisher profile pic:', error);
             return window.DEFAULT_AVATAR;
+        }
+    }
+
+    // Add new method to load user likes from Firebase
+    async loadUserLikes() {
+        try {
+            const username = localStorage.getItem('username');
+            if (!username) return;
+
+            const snapshot = await this.userLikesRef.once('value');
+            const likes = snapshot.val() || {};
+            
+            // Update local storage and memory with Firebase data
+            this.likedVideos = new Set(Object.keys(likes));
+            localStorage.setItem(this.likedVideosKey, JSON.stringify([...this.likedVideos]));
+        } catch (error) {
+            console.error('Error loading user likes:', error);
         }
     }
 }
