@@ -26,6 +26,8 @@ class ProfilePage {
 
         this.database = firebase.database();
         this.videosRef = this.database.ref('videos');
+        this.commentsRef = this.database.ref('comments');
+        this.commentLikesRef = this.database.ref('commentLikes');
         
         this.setupUI();
         this.loadUserData();
@@ -328,6 +330,162 @@ class ProfilePage {
         } catch (error) {
             errorDisplay.textContent = error.message;
         }
+    }
+
+    async showComments(video) {
+        const modal = document.createElement('div');
+        modal.className = 'comment-modal';
+        modal.innerHTML = `
+            <div class="comment-header">
+                <h3>Comments</h3>
+                <button class="close-comments">×</button>
+            </div>
+            <div class="comments-container"></div>
+            <div class="comment-input-container">
+                <input type="text" class="comment-input" placeholder="Add a comment...">
+                <button class="comment-submit" disabled>Post</button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        requestAnimationFrame(() => modal.classList.add('active'));
+
+        const closeBtn = modal.querySelector('.close-comments');
+        closeBtn.addEventListener('click', () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        });
+
+        const input = modal.querySelector('.comment-input');
+        const submitBtn = modal.querySelector('.comment-submit');
+        const container = modal.querySelector('.comments-container');
+
+        // Enable/disable submit button based on input
+        input.addEventListener('input', () => {
+            submitBtn.disabled = !input.value.trim();
+        });
+
+        // Handle comment submission
+        submitBtn.addEventListener('click', async () => {
+            const text = input.value.trim();
+            if (!text) return;
+
+            try {
+                const username = localStorage.getItem('username');
+                if (!username) {
+                    alert('Please sign in to comment');
+                    return;
+                }
+
+                const commentData = {
+                    text,
+                    username,
+                    videoId: video.id,
+                    timestamp: Date.now(),
+                    likes: 0
+                };
+
+                // Get user's profile picture
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+                const userData = userSnapshot.val();
+                if (userData) {
+                    const userId = Object.keys(userData)[0];
+                    commentData.userPic = userData[userId].profilePic || DEFAULT_AVATAR;
+                }
+
+                await this.commentsRef.push(commentData);
+                input.value = '';
+                submitBtn.disabled = true;
+
+            } catch (error) {
+                console.error('Error posting comment:', error);
+                alert('Failed to post comment');
+            }
+        });
+
+        // Load and listen for comments
+        this.commentsRef.orderByChild('videoId').equalTo(video.id).on('value', async snapshot => {
+            const comments = snapshot.val() || {};
+            container.innerHTML = '';
+            
+            // Update the video's comment count in Firebase
+            const commentCount = Object.keys(comments).length;
+            await this.videosRef.child(video.id).update({
+                comments: commentCount
+            });
+
+            // Get current user's liked comments
+            const username = localStorage.getItem('username');
+            let userLikedComments = new Set();
+            if (username) {
+                const likesSnapshot = await this.commentLikesRef.child(username).once('value');
+                userLikedComments = new Set(Object.keys(likesSnapshot.val() || {}));
+            }
+
+            Object.entries(comments).reverse().forEach(([commentId, comment]) => {
+                const isLiked = userLikedComments.has(commentId);
+                const div = document.createElement('div');
+                div.className = 'comment-item';
+                div.innerHTML = `
+                    <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
+                    <div class="comment-content">
+                        <div class="comment-header-text">
+                            <a href="./profile.html?user=${comment.username}" class="comment-username">@${comment.username}</a>
+                            <span class="comment-time">${this.formatDate(comment.timestamp)}</span>
+                        </div>
+                        <p class="comment-text">${comment.text}</p>
+                        <div class="comment-actions">
+                            <button class="comment-like ${isLiked ? 'liked' : ''}">
+                                ${isLiked ? '❤️' : '🤍'}
+                                <span>${comment.likes || 0}</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                const likeBtn = div.querySelector('.comment-like');
+                likeBtn.addEventListener('click', async () => {
+                    if (!username) {
+                        alert('Please sign in to like comments');
+                        return;
+                    }
+
+                    try {
+                        const commentRef = this.commentsRef.child(commentId);
+                        const userLikeRef = this.commentLikesRef.child(username).child(commentId);
+
+                        if (isLiked) {
+                            await Promise.all([
+                                commentRef.update({ likes: (comment.likes || 0) - 1 }),
+                                userLikeRef.remove()
+                            ]);
+                        } else {
+                            await Promise.all([
+                                commentRef.update({ likes: (comment.likes || 0) + 1 }),
+                                userLikeRef.set(true)
+                            ]);
+                        }
+                    } catch (error) {
+                        console.error('Error updating comment like:', error);
+                        alert('Failed to update like');
+                    }
+                });
+
+                container.appendChild(div);
+            });
+        });
+    }
+
+    formatDate(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        });
     }
 }
 

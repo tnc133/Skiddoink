@@ -22,6 +22,8 @@ class SkiddoinkApp {
         // Initialize Firebase services
         this.database = firebase.database();
         this.videosRef = this.database.ref('videos');
+        this.commentsRef = this.database.ref('comments');
+        this.commentLikesRef = this.database.ref('commentLikes');
 
         // Setup username display
         this.usernameDisplay = document.querySelector('.username-display');
@@ -49,10 +51,39 @@ class SkiddoinkApp {
         this.videosPerLoad = 5;  // Number of videos to load each time
         this.isLoading = false;  // Flag to prevent multiple simultaneous loads
         
-        // Add scroll event listener for infinite scroll
-        this.feed.addEventListener('scroll', () => {
-            this.handleScroll();
-        }, { passive: true });
+        this.scrollTimeout = null;
+        this.isScrolling = false;
+        
+        // Replace the scroll event listener with the original Intersection Observer
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (this.isInCommentMode) return; // Ignore all intersection events during comment mode
+                
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const container = entry.target;
+                        const videoElement = container.querySelector('video');
+                        
+                        // Stop any other playing videos
+                        const currentlyPlaying = this.feed.querySelector('.video-container.active');
+                        if (currentlyPlaying && currentlyPlaying !== container) {
+                            const video = currentlyPlaying.querySelector('video');
+                            video.pause();
+                            currentlyPlaying.classList.remove('active');
+                        }
+
+                        // Play this video
+                        videoElement.currentTime = 0;
+                        videoElement.muted = !this.hasUserInteracted;
+                        videoElement.play().catch(console.error);
+                        container.classList.add('active');
+                    }
+                });
+            },
+            {
+                threshold: 0.7
+            }
+        );
 
         // Add scroll lock property
         this.isScrollLocked = false;
@@ -84,6 +115,13 @@ class SkiddoinkApp {
 
         // Try to detect if autoplay with sound is allowed
         this.checkAutoplaySupport();
+
+        this.isInCommentMode = false;
+
+        // Add this property to store observers
+        this.videoObservers = new Map(); // Store observers by video ID
+        this.currentVideoId = null;  // Track current video ID
+        this.observers = new Map(); // Store observers for each video container
     }
 
     checkUsername() {
@@ -301,42 +339,6 @@ class SkiddoinkApp {
                     container.appendChild(unmuteHint);
                 }
 
-                // Add more debugging events
-                videoElement.addEventListener('loadstart', () => {
-                    console.log('Video loadstart:', {
-                        id: video.id,
-                        muted: videoElement.muted,
-                        hasInteracted: this.hasUserInteracted
-                    });
-                });
-
-                videoElement.addEventListener('canplay', () => {
-                    console.log('Video canplay:', {
-                        id: video.id,
-                        muted: videoElement.muted,
-                        hasInteracted: this.hasUserInteracted
-                    });
-                });
-
-                videoElement.addEventListener('play', () => {
-                    console.log('Video play event:', {
-                        id: video.id,
-                        muted: videoElement.muted,
-                        hasInteracted: this.hasUserInteracted,
-                        userActivation: navigator.userActivation?.hasBeenActive
-                    });
-                });
-
-                // Add debugging events
-                videoElement.addEventListener('volumechange', () => {
-                    console.log('Volume changed:', {
-                        id: video.id,
-                        muted: videoElement.muted,
-                        volume: videoElement.volume,
-                        autoplay: videoElement.autoplay
-                    });
-                });
-
                 // Update click handler
                 container.addEventListener('click', (e) => {
                     if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
@@ -345,71 +347,16 @@ class SkiddoinkApp {
 
                     if (e.target === container || e.target === videoElement) {
                         if (videoElement.paused) {
-                            videoElement.muted = !this.hasUserInteracted;
-                            videoElement.play().then(() => {
-                                if (this.hasUserInteracted) {
-                                    videoElement.muted = false;
-                                }
-                            });
+                            videoElement.play();
                         } else {
-                            videoElement.pause();
+                            if (videoElement.muted && this.hasUserInteracted) {
+                                videoElement.muted = false;
+                            } else {
+                                videoElement.pause();
+                            }
                         }
                     }
                 });
-
-                // Update the Intersection Observer
-                const observer = new IntersectionObserver(
-                    (entries) => {
-                        if (this.isScrollLocked) return;
-
-                        entries.forEach(entry => {
-                            if (entry.isIntersecting && entry.intersectionRatio > 0.8) {
-                                if (!container.hasAttribute('data-user-interaction')) {
-                                    const currentlyPlaying = this.feed.querySelector('.video-container.active');
-                                    if (currentlyPlaying && currentlyPlaying !== container) {
-                                        const video = currentlyPlaying.querySelector('video');
-                                        console.log('Stopping previous video:', {
-                                            id: currentlyPlaying.dataset.videoId,
-                                            muted: video.muted,
-                                            hasInteracted: this.hasUserInteracted
-                                        });
-                                        video.pause();
-                                        video.currentTime = 0;
-                                        currentlyPlaying.classList.remove('active');
-                                    }
-
-                                    console.log('Starting new video:', {
-                                        id: video.id,
-                                        muted: videoElement.muted,
-                                        hasInteracted: this.hasUserInteracted
-                                    });
-
-                                    videoElement.currentTime = 0;
-                                    videoElement.volume = 1;
-                                    // Only unmute if user has interacted
-                                    videoElement.muted = !this.hasUserInteracted;
-
-                                    videoElement.play().then(() => {
-                                        console.log('Video started successfully:', {
-                                            id: video.id,
-                                            muted: videoElement.muted,
-                                            hasInteracted: this.hasUserInteracted
-                                        });
-                                    }).catch(error => {
-                                        console.error('Failed to start video:', error);
-                                    });
-
-                                    container.classList.add('active');
-                                }
-                            }
-                        });
-                    },
-                    {
-                        threshold: [0.8],
-                        rootMargin: '-10% 0px'
-                    }
-                );
-                observer.observe(container);
 
                 // Add interaction buttons
                 const interactionButtons = document.createElement('div');
@@ -422,7 +369,7 @@ class SkiddoinkApp {
                     </button>
                     <button class="interaction-btn comment-btn">
                         💬
-                        <span>${video.comments?.length || 0}</span>
+                        <span class="comment-count">0</span>
                     </button>
                     <button class="interaction-btn share-btn">
                         ↗️
@@ -512,6 +459,14 @@ class SkiddoinkApp {
                     }
                 });
 
+                // Add comment button handler
+                const commentBtn = interactionButtons.querySelector('.comment-btn');
+                commentBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.showComments({...video, id: video.id});
+                });
+
                 // Add video info
                 const infoOverlay = document.createElement('div');
                 infoOverlay.className = 'video-info';
@@ -597,14 +552,51 @@ class SkiddoinkApp {
                         localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
                     }
                 });
+
+                // Update comment count for this video
+                this.commentsRef.orderByChild('videoId').equalTo(video.id).once('value', snapshot => {
+                    const comments = snapshot.val() || {};
+                    const commentCount = Object.keys(comments).length;
+                    const countSpan = interactionButtons.querySelector('.comment-count');
+                    if (countSpan) {
+                        countSpan.textContent = commentCount;
+                    }
+                });
+
+                // Create a new observer for each video container
+                const observer = new IntersectionObserver(
+                    (entries) => {
+                        const entry = entries[0];
+                        if (entry.isIntersecting && !this.isInCommentMode) {
+                            const videoElement = container.querySelector('video');
+                            
+                            // Stop any other playing videos
+                            const currentlyPlaying = this.feed.querySelector('.video-container.active');
+                            if (currentlyPlaying && currentlyPlaying !== container) {
+                                const video = currentlyPlaying.querySelector('video');
+                                video.pause();
+                                currentlyPlaying.classList.remove('active');
+                            }
+
+                            // Play this video
+                            videoElement.currentTime = 0;
+                            videoElement.muted = !this.hasUserInteracted;
+                            videoElement.play().catch(console.error);
+                            container.classList.add('active');
+                        }
+                    },
+                    { threshold: 0.7 }
+                );
+
+                observer.observe(container);
+                this.observers.set(container, observer);
             }
 
             this.currentVideoIndex += this.videosPerLoad;
-            this.isLoading = false;
         } catch (error) {
             console.error('Error loading more videos:', error);
-            this.isLoading = false;
         }
+        this.isLoading = false;
     }
 
     formatDate(timestamp) {
@@ -614,22 +606,6 @@ class SkiddoinkApp {
             month: 'short',
             day: 'numeric'
         });
-    }
-
-    // Add new method for handling infinite scroll
-    handleScroll() {
-        if (this.isLoading) return;
-
-        const lastVideo = this.feed.lastElementChild;
-        if (!lastVideo) return;
-
-        const lastVideoOffset = lastVideo.offsetTop + lastVideo.clientHeight;
-        const pageOffset = this.feed.scrollTop + this.feed.clientHeight;
-
-        // If we're near the bottom, load more videos
-        if (pageOffset > lastVideoOffset - 1000) {  // 1000px threshold
-            this.loadMoreVideos();
-        }
     }
 
     async getPublisherProfilePic(username) {
@@ -685,6 +661,252 @@ class SkiddoinkApp {
             console.log('Autoplay with sound not allowed:', error);
             this.hasUserInteracted = false;
         }
+    }
+
+    async showComments(video) {
+        this.isInCommentMode = true;
+        
+        // Disconnect all observers during comment mode
+        this.observers.forEach(observer => observer.disconnect());
+        
+        const modal = document.createElement('div');
+        modal.className = 'comment-modal';
+        modal.innerHTML = `
+            <div class="comment-header">
+                <h3>Comments</h3>
+                <button class="close-comments">×</button>
+            </div>
+            <div class="comments-container"></div>
+            <div class="comment-input-container">
+                <input type="text" class="comment-input" placeholder="Add a comment...">
+                <button class="comment-submit" disabled>Post</button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        requestAnimationFrame(() => modal.classList.add('active'));
+
+        const closeBtn = modal.querySelector('.close-comments');
+        closeBtn.addEventListener('click', () => {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.remove();
+                this.isInCommentMode = false;
+                
+                // Reconnect all observers
+                this.observers.forEach((observer, container) => {
+                    if (container.isConnected) { // Only if container still exists
+                        observer.observe(container);
+                    }
+                });
+            }, 300);
+        });
+
+        const input = modal.querySelector('.comment-input');
+        const submitBtn = modal.querySelector('.comment-submit');
+        const container = modal.querySelector('.comments-container');
+
+        // Enable/disable submit button based on input
+        input.addEventListener('input', () => {
+            submitBtn.disabled = !input.value.trim();
+        });
+
+        // Handle comment submission
+        submitBtn.addEventListener('click', async () => {
+            const text = input.value.trim();
+            if (!text) return;
+
+            submitBtn.disabled = true;
+            input.disabled = true;
+
+            try {
+                // Store current video state
+                const activeVideo = this.feed.querySelector('.video-container.active');
+                const videoElement = activeVideo?.querySelector('video');
+                const wasPlaying = !videoElement?.paused;
+                
+                // Force video to keep playing
+                if (videoElement && wasPlaying) {
+                    videoElement.play().catch(console.error);
+                }
+
+                const username = localStorage.getItem('username');
+                if (!username) {
+                    alert('Please sign in to comment');
+                    return;
+                }
+
+                const commentData = {
+                    text,
+                    username,
+                    videoId: video.id,
+                    timestamp: Date.now(),
+                    likes: 0
+                };
+
+                // Get user profile pic
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+                const userData = userSnapshot.val();
+                if (userData) {
+                    const userId = Object.keys(userData)[0];
+                    commentData.userPic = userData[userId].profilePic || DEFAULT_AVATAR;
+                }
+
+                // Create new comment reference
+                const newCommentRef = this.commentsRef.push();
+
+                // Do everything in parallel
+                await Promise.all([
+                    // Post the comment
+                    newCommentRef.set(commentData),
+                    // Keep video playing
+                    videoElement?.play()
+                ]);
+
+                // Clear input but keep focus
+                input.value = '';
+                input.focus();
+
+                // Make absolutely sure the video stays active
+                if (activeVideo && videoElement) {
+                    activeVideo.classList.add('active');
+                    if (wasPlaying) {
+                        videoElement.play().catch(console.error);
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error posting comment:', error);
+                alert('Failed to post comment');
+            } finally {
+                submitBtn.disabled = false;
+                input.disabled = false;
+            }
+        });
+
+        // Load and listen for comments
+        this.commentsRef.orderByChild('videoId').equalTo(video.id).on('value', async snapshot => {
+            const comments = snapshot.val() || {};
+            container.innerHTML = '';
+            
+            // Get current user's liked comments
+            const username = localStorage.getItem('username');
+            let userLikedComments = new Set();
+            if (username) {
+                const likesSnapshot = await this.commentLikesRef.child(username).once('value');
+                userLikedComments = new Set(Object.keys(likesSnapshot.val() || {}));
+            }
+
+            // Convert comments to array for sorting
+            let commentsArray = Object.entries(comments).map(([id, comment]) => ({
+                ...comment,
+                id,
+                isLiked: userLikedComments.has(id)
+            }));
+
+            // Sort comments: pinned first, then by likes, then by timestamp
+            commentsArray.sort((a, b) => {
+                if (a.pinned && !b.pinned) return -1;
+                if (!a.pinned && b.pinned) return 1;
+                if (a.likes !== b.likes) return (b.likes || 0) - (a.likes || 0);
+                return b.timestamp - a.timestamp;
+            });
+
+            // Separate creator comments
+            const creatorComments = commentsArray.filter(comment => comment.username === video.publisher);
+            const otherComments = commentsArray.filter(comment => comment.username !== video.publisher);
+
+            // Display creator comments first, then others
+            [...creatorComments, ...otherComments].forEach(comment => {
+                const div = document.createElement('div');
+                div.className = 'comment-item';
+                const isCreator = comment.username === video.publisher;
+                
+                div.innerHTML = `
+                    <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
+                    <div class="comment-content">
+                        <div class="comment-header-text">
+                            <a href="./profile.html?user=${comment.username}" class="comment-username">
+                                @${comment.username}
+                                ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
+                            </a>
+                            ${comment.pinned ? '<span class="pinned-badge"> Pinned</span>' : ''}
+                            <span class="comment-time">${this.formatDate(comment.timestamp)}</span>
+                        </div>
+                        <p class="comment-text">${comment.text}</p>
+                        <div class="comment-actions">
+                            <button class="comment-like ${comment.isLiked ? 'liked' : ''}">
+                                ${comment.isLiked ? '❤️' : '🤍'}
+                                <span>${comment.likes || 0}</span>
+                            </button>
+                            ${isCreator || video.publisher === localStorage.getItem('username') ? `
+                                <button class="pin-comment-btn" data-comment-id="${comment.id}">
+                                    ${comment.pinned ? 'Unpin' : 'Pin'}
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                // Add like button handler
+                const likeBtn = div.querySelector('.comment-like');
+                likeBtn.addEventListener('click', async () => {
+                    if (!username) {
+                        alert('Please sign in to like comments');
+                        return;
+                    }
+
+                    try {
+                        const commentRef = this.commentsRef.child(comment.id);
+                        const userLikeRef = this.commentLikesRef.child(username).child(comment.id);
+
+                        if (comment.isLiked) {
+                            await Promise.all([
+                                commentRef.update({ likes: (comment.likes || 0) - 1 }),
+                                userLikeRef.remove()
+                            ]);
+                        } else {
+                            await Promise.all([
+                                commentRef.update({ likes: (comment.likes || 0) + 1 }),
+                                userLikeRef.set(true)
+                            ]);
+                        }
+                    } catch (error) {
+                        console.error('Error updating comment like:', error);
+                        alert('Failed to update like');
+                    }
+                });
+
+                // Add pin/unpin functionality
+                const pinBtn = div.querySelector('.pin-comment-btn');
+                if (pinBtn) {
+                    pinBtn.addEventListener('click', async () => {
+                        try {
+                            const commentRef = this.commentsRef.child(comment.id);
+                            await commentRef.update({
+                                pinned: !comment.pinned
+                            });
+                        } catch (error) {
+                            console.error('Error updating pin status:', error);
+                            alert('Failed to update pin status');
+                        }
+                    });
+                }
+
+                container.appendChild(div);
+            });
+        });
+
+        // In the showComments method, add this after the input event listener:
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !submitBtn.disabled) {
+                e.preventDefault(); // Prevent newline
+                submitBtn.click(); // Trigger the same click handler
+            }
+        });
     }
 }
 
