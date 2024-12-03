@@ -36,9 +36,10 @@ class SkiddoinkApp {
         }
 
         // Add username display
-        this.usernameDisplay = document.createElement('span');
+        this.usernameDisplay = document.createElement('a');
         this.usernameDisplay.className = 'username-display';
         this.usernameDisplay.textContent = localStorage.getItem('username') || 'Guest';
+        this.usernameDisplay.href = '/profile.html';
         uploadBtn.parentElement.insertBefore(this.usernameDisplay, uploadBtn);
 
         this.loadVideos();

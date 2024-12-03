@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Skiddoink</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="profile.css">
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <a href="/" class="back-btn">←</a>
+            <h1>Profile</h1>
+            <button id="uploadBtn">Upload Video</button>
+        </div>
+        
+        <div class="profile-container">
+            <div class="profile-header">
+                <h2 class="profile-username"></h2>
+            </div>
+            
+            <div class="videos-grid">
+                <!-- Videos will be inserted here -->
+            </div>
+            
+            <div class="no-videos-message" style="display: none;">
+                <p>No videos, consider uploading one</p>
+                <button id="profileUploadBtn">Upload Video</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Same scripts as index.html -->
+    <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <script src="profile.js"></script>
+</body>
+</html> 
