@@ -824,6 +824,7 @@ class SkiddoinkApp {
                 const div = document.createElement('div');
                 div.className = 'comment-item';
                 const isCreator = comment.username === video.publisher;
+                const isOwnComment = comment.username === localStorage.getItem('username');
                 
                 div.innerHTML = `
                     <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
@@ -835,6 +836,7 @@ class SkiddoinkApp {
                             </a>
                             ${comment.pinned ? '<span class="pinned-badge"> Pinned</span>' : ''}
                             <span class="comment-time">${this.formatDate(comment.timestamp)}</span>
+                            ${isOwnComment ? '<button class="delete-comment-btn">🗑️</button>' : ''}
                         </div>
                         <p class="comment-text">${comment.text}</p>
                         <div class="comment-actions">
@@ -850,6 +852,21 @@ class SkiddoinkApp {
                         </div>
                     </div>
                 `;
+
+                // Add delete handler
+                const deleteBtn = div.querySelector('.delete-comment-btn');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', async () => {
+                        if (confirm('Are you sure you want to delete this comment?')) {
+                            try {
+                                await this.commentsRef.child(comment.id).remove();
+                            } catch (error) {
+                                console.error('Error deleting comment:', error);
+                                alert('Failed to delete comment');
+                            }
+                        }
+                    });
+                }
 
                 // Add like button handler
                 const likeBtn = div.querySelector('.comment-like');
