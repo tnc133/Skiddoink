@@ -63,20 +63,27 @@ class SkiddoinkApp {
         // Add flag for first interaction
         this.hasUserInteracted = false;
         
-        // Listen for any user interaction
-        document.addEventListener('click', () => {
-            if (!this.hasUserInteracted) {
-                console.log('First user interaction detected');
-                this.hasUserInteracted = true;
-                // Try to unmute any playing video
-                const activeVideo = document.querySelector('.video-container.active video');
-                if (activeVideo) {
-                    console.log('Found active video, attempting to unmute');
-                    activeVideo.muted = false;
-                    activeVideo.volume = 1;
+        // Listen for ANY user interaction, not just clicks
+        const interactionEvents = ['click', 'touchstart', 'keydown', 'scroll'];
+        interactionEvents.forEach(eventType => {
+            document.addEventListener(eventType, () => {
+                if (!this.hasUserInteracted) {
+                    console.log(`First user interaction detected (${eventType})`);
+                    this.hasUserInteracted = true;
+                    // Try to unmute and play all videos
+                    document.querySelectorAll('.video-container video').forEach(video => {
+                        if (video.closest('.video-container').classList.contains('active')) {
+                            video.muted = false;
+                            video.volume = 1;
+                            video.play().catch(err => console.error('Play failed:', err));
+                        }
+                    });
                 }
-            }
-        }, { once: true });
+            }, { once: true });
+        });
+
+        // Try to detect if autoplay with sound is allowed
+        this.checkAutoplaySupport();
     }
 
     checkUsername() {
@@ -280,11 +287,19 @@ class SkiddoinkApp {
                 videoElement.src = video.url;
                 videoElement.loop = true;
                 videoElement.playsInline = true;
-                videoElement.muted = !this.hasUserInteracted;
+                videoElement.muted = true; // Start muted always
                 videoElement.volume = 1;
                 videoElement.controls = false;
                 videoElement.setAttribute('playsinline', '');
                 videoElement.setAttribute('webkit-playsinline', '');
+
+                // Add a visual indicator for unmuting
+                if (!this.hasUserInteracted) {
+                    const unmuteHint = document.createElement('div');
+                    unmuteHint.className = 'unmute-hint';
+                    unmuteHint.innerHTML = '🔇 Tap to unmute';
+                    container.appendChild(unmuteHint);
+                }
 
                 // Add more debugging events
                 videoElement.addEventListener('loadstart', () => {
@@ -322,29 +337,19 @@ class SkiddoinkApp {
                     });
                 });
 
-                // Add click handler back for debugging
+                // Update click handler
                 container.addEventListener('click', (e) => {
                     if (e.target.closest('.interaction-buttons') || e.target.closest('.video-info')) {
                         return;
                     }
 
                     if (e.target === container || e.target === videoElement) {
-                        console.log('Click state:', {
-                            id: video.id,
-                            muted: videoElement.muted,
-                            volume: videoElement.volume,
-                            paused: videoElement.paused
-                        });
-
                         if (videoElement.paused) {
+                            videoElement.muted = !this.hasUserInteracted;
                             videoElement.play().then(() => {
-                                console.log('Manual play success:', {
-                                    id: video.id,
-                                    muted: videoElement.muted,
-                                    volume: videoElement.volume
-                                });
-                            }).catch(error => {
-                                console.error('Manual play failed:', error);
+                                if (this.hasUserInteracted) {
+                                    videoElement.muted = false;
+                                }
                             });
                         } else {
                             videoElement.pause();
@@ -660,6 +665,25 @@ class SkiddoinkApp {
             localStorage.setItem(this.likedVideosKey, JSON.stringify([...this.likedVideos]));
         } catch (error) {
             console.error('Error loading user likes:', error);
+        }
+    }
+
+    // Add new method to check autoplay support
+    async checkAutoplaySupport() {
+        try {
+            const video = document.createElement('video');
+            video.src = 'data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDJtcDQxaXNvbWF2YzEAAATKbW9vdgAAAGxtdmhkAAAAANLEP5XSxD+VAAB1MAAAdU4AAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAACFpb2RzAAAAABCAgIAQAE////9//w6AgIAEAAAAAQAABDV0cmFrAAAAXHRraGQAAAAH0sQ/ldLEP5UAAAABAAAAAAAAdU4AAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAoAAAAFoAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAHVOAAAH0gABAAAAAAOtbWRpYQAAACBtZGhkAAAAANLEP5XSxD+VAAB1MAAAdU4AAAAAAAAAIGhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABMLVNNQVNIIHZpZGVvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABj//wAAADFhdmNDAWQAC//hABlnZAALrNlfllw4QAAAAwBAAAADAKPFCmWAAQAFaOvssiwAAAAYc3R0cwAAAAAAAAABAAAAFAAAAAAAAAAc3RzYwAAAAAAAAAEAAAABAAAABQAAAAEAAAAIAAAACQAAAAUAAAAMAAAABQAAAAgAAAAFAAAADAAAAAEAAAAIAAAAAQAAAAgAAAAIAAAAFAAAABIAAAAUAAAAEgAAABQAAAASAAAAFAAAABIAAAAUAAAAGHN0c3oAAAAAAAAAAwAAABQAAAAgAAAALAAAADh1ZHRhAAAAOG1ldGEAAAAAAAAAImhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNTguNDUuMTAw';
+            video.muted = false;
+            video.volume = 0.01; // Very quiet test
+            video.style.display = 'none';
+            document.body.appendChild(video);
+            
+            await video.play();
+            this.hasUserInteracted = true; // If autoplay with sound works, treat as interacted
+            document.body.removeChild(video);
+        } catch (error) {
+            console.log('Autoplay with sound not allowed:', error);
+            this.hasUserInteracted = false;
         }
     }
 }
