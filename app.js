@@ -122,6 +122,12 @@ class SkiddoinkApp {
         this.videoObservers = new Map(); // Store observers by video ID
         this.currentVideoId = null;  // Track current video ID
         this.observers = new Map(); // Store observers for each video container
+
+        this.feed.addEventListener('scroll', () => {
+            if (!this.isInCommentMode) {
+                this.handleScroll();
+            }
+        }, { passive: true });
     }
 
     checkUsername() {
@@ -924,6 +930,21 @@ class SkiddoinkApp {
                 submitBtn.click(); // Trigger the same click handler
             }
         });
+    }
+
+    handleScroll() {
+        if (this.isLoading) return;
+
+        const lastVideo = this.feed.lastElementChild;
+        if (!lastVideo) return;
+
+        const lastVideoOffset = lastVideo.offsetTop + lastVideo.clientHeight;
+        const pageOffset = this.feed.scrollTop + this.feed.clientHeight;
+
+        // If we're near the bottom, load more videos
+        if (pageOffset > lastVideoOffset - 1000) {  // 1000px threshold
+            this.loadMoreVideos();
+        }
     }
 }
 
