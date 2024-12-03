@@ -20,14 +20,19 @@
                 <h2 class="profile-username"></h2>
             </div>
             
-            <div class="videos-grid">
-                <!-- Videos will be inserted here -->
+            <div class="videos-section">
+                <h3 class="section-title">Your Videos</h3>
+                <div class="videos-grid">
+                    <!-- Videos will be inserted here -->
+                </div>
+                
+                <div class="no-videos-message" style="display: none;">
+                    <p>No videos, consider uploading one</p>
+                    <button id="profileUploadBtn">Upload Video</button>
+                </div>
             </div>
-            
-            <div class="no-videos-message" style="display: none;">
-                <p>No videos, consider uploading one</p>
-                <button id="profileUploadBtn">Upload Video</button>
-            </div>
+
+            <button id="signoutBtn" class="signout-btn">Sign Out</button>
         </div>
     </div>
 
@@ -36,6 +41,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <script src="auth.js"></script>
     <script src="profile.js"></script>
 </body>
 </html> 

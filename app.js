@@ -51,6 +51,8 @@ class SkiddoinkApp {
         
         // Update profile link
         this.usernameDisplay.href = this.basePath + 'profile.html';
+
+        this.watchedVideos = new Set(JSON.parse(localStorage.getItem('watchedVideos') || '[]'));
     }
 
     checkUsername() {
@@ -60,28 +62,66 @@ class SkiddoinkApp {
             modal.innerHTML = `
                 <div class="username-modal-content">
                     <h2>Welcome to Skiddoink!</h2>
-                    <p>Please enter a username to continue:</p>
-                    <input type="text" id="usernameInput" maxlength="20" placeholder="Your username">
-                    <button id="submitUsername">Continue</button>
+                    <div class="auth-tabs">
+                        <button class="auth-tab active" data-tab="signin">Sign In</button>
+                        <button class="auth-tab" data-tab="signup">Sign Up</button>
+                    </div>
+                    <div class="auth-form signin-form">
+                        <input type="text" id="usernameInput" maxlength="20" placeholder="Username">
+                        <input type="password" id="passwordInput" placeholder="Password">
+                        <button id="submitAuth">Sign In</button>
+                        <p class="auth-error"></p>
+                    </div>
+                    <div class="auth-form signup-form" style="display: none;">
+                        <input type="text" id="signupUsername" maxlength="20" placeholder="Username">
+                        <input type="password" id="signupPassword" placeholder="Password">
+                        <button id="submitSignup">Sign Up</button>
+                        <p class="auth-error"></p>
+                    </div>
                 </div>
             `;
             document.body.appendChild(modal);
 
-            const input = modal.querySelector('#usernameInput');
-            const submitBtn = modal.querySelector('#submitUsername');
+            const auth = new AuthManager();
+            const errorDisplay = modal.querySelector('.auth-error');
 
-            const handleSubmit = () => {
-                const username = input.value.trim();
-                if (username) {
-                    localStorage.setItem('username', username);
-                    this.usernameDisplay.textContent = username;
+            // Handle tab switching
+            modal.querySelectorAll('.auth-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    modal.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    const isSignIn = tab.dataset.tab === 'signin';
+                    modal.querySelector('.signin-form').style.display = isSignIn ? 'block' : 'none';
+                    modal.querySelector('.signup-form').style.display = isSignIn ? 'none' : 'block';
+                });
+            });
+
+            // Handle sign in
+            modal.querySelector('#submitAuth').addEventListener('click', async () => {
+                const username = modal.querySelector('#usernameInput').value;
+                const password = modal.querySelector('#passwordInput').value;
+
+                try {
+                    await auth.signIn(username, password);
                     document.body.removeChild(modal);
+                    this.usernameDisplay.textContent = username;
+                } catch (error) {
+                    errorDisplay.textContent = error.message;
                 }
-            };
+            });
 
-            submitBtn.addEventListener('click', handleSubmit);
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleSubmit();
+            // Handle sign up
+            modal.querySelector('#submitSignup').addEventListener('click', async () => {
+                const username = modal.querySelector('#signupUsername').value;
+                const password = modal.querySelector('#signupPassword').value;
+
+                try {
+                    await auth.signUp(username, password);
+                    document.body.removeChild(modal);
+                    this.usernameDisplay.textContent = username;
+                } catch (error) {
+                    modal.querySelector('.signup-form .auth-error').textContent = error.message;
+                }
             });
         }
     }
@@ -179,9 +219,24 @@ class SkiddoinkApp {
 
     displayVideos(videos) {
         this.feed.innerHTML = '';
-        const randomizedVideos = [...videos].sort(() => Math.random() - 0.5);
+        
+        // Sort videos: unwatched first, then watched
+        const sortedVideos = [...videos].sort((a, b) => {
+            const aWatched = this.watchedVideos.has(a.id);
+            const bWatched = this.watchedVideos.has(b.id);
+            if (aWatched === bWatched) {
+                return Math.random() - 0.5; // Random sort within each group
+            }
+            return aWatched ? 1 : -1; // Unwatched first
+        });
 
-        randomizedVideos.forEach(video => {
+        // If all videos are watched, reset tracking
+        if (sortedVideos.every(v => this.watchedVideos.has(v.id))) {
+            this.watchedVideos.clear();
+            localStorage.setItem('watchedVideos', '[]');
+        }
+
+        sortedVideos.forEach(video => {
             const container = document.createElement('div');
             container.className = 'video-container';
             container.dataset.videoId = video.id;
@@ -316,6 +371,14 @@ class SkiddoinkApp {
             container.appendChild(infoOverlay);
             container.appendChild(deleteButton);
             this.feed.appendChild(container);
+
+            // Mark video as watched when it plays
+            videoElement.addEventListener('play', () => {
+                if (!this.watchedVideos.has(video.id)) {
+                    this.watchedVideos.add(video.id);
+                    localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
+                }
+            });
         });
 
         // Improved scroll handling

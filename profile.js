@@ -6,7 +6,7 @@ class ProfilePage {
             return;
         }
 
-        // Initialize Firebase (same config as app.js)
+        // Initialize Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAktux6amfQANJPyo1Z5ppGw4oSmtzk4AU",
             authDomain: "skiddoink.firebaseapp.com",
@@ -40,6 +40,17 @@ class ProfilePage {
                 btn.addEventListener('click', () => this.handleUpload());
             }
         });
+
+        // Setup sign out
+        const signoutBtn = document.getElementById('signoutBtn');
+        if (signoutBtn) {
+            signoutBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to sign out?')) {
+                    localStorage.clear();
+                    window.location.href = './index.html';
+                }
+            });
+        }
     }
 
     async loadUserVideos() {
@@ -53,6 +64,9 @@ class ProfilePage {
                 noVideosMessage.style.display = 'block';
                 return;
             }
+            
+            noVideosMessage.style.display = 'none';
+            videosGrid.innerHTML = ''; // Clear existing videos
             
             Object.entries(videos).forEach(([id, video]) => {
                 const thumbnail = document.createElement('div');
@@ -76,9 +90,7 @@ class ProfilePage {
                 thumbnail.addEventListener('click', () => {
                     localStorage.setItem('activeVideoId', id);
                     localStorage.setItem('scrollToVideo', 'true');
-                    window.location.href = location.pathname.includes('github.io') ? 
-                        '/your-repo-name/index.html' : 
-                        './index.html';
+                    window.location.href = './index.html';
                 });
             });
         });
@@ -88,6 +100,7 @@ class ProfilePage {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'video/*';
+        input.click();
         
         input.onchange = async (e) => {
             const file = e.target.files[0];
@@ -135,8 +148,7 @@ class ProfilePage {
                         const newVideoRef = this.videosRef.push();
                         await newVideoRef.set(videoData);
 
-                        // Reload the videos grid after upload
-                        this.loadUserVideos();
+                        this.loadUserVideos(); // Reload videos after upload
                         alert('Video added successfully!');
                     } else {
                         throw new Error('Upload failed');
@@ -160,8 +172,6 @@ class ProfilePage {
                 }
             }
         };
-
-        input.click();
     }
 }
 

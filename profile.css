@@ -9,6 +9,9 @@
     padding-top: 80px;
     max-width: 1200px;
     margin: 0 auto;
+    min-height: 100vh;
+    position: relative;
+    padding-bottom: 80px;
 }
 
 .profile-header {
@@ -35,6 +38,8 @@
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 20px;
     padding: 20px;
+    margin-top: 20px;
+    min-height: 200px;
 }
 
 .video-thumbnail {
@@ -44,6 +49,13 @@
     border-radius: 8px;
     overflow: hidden;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    border: 2px solid #333;
+    transition: border-color 0.2s ease;
+}
+
+.video-thumbnail:hover {
+    border-color: #FF4444;
 }
 
 .video-thumbnail video {
@@ -69,4 +81,112 @@
     border-radius: 5px;
     color: white;
     cursor: pointer;
+}
+
+.auth-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.auth-box {
+    background: #222;
+    padding: 2rem;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 400px;
+}
+
+.auth-tabs {
+    display: flex;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #333;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 0.8rem;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.auth-tab.active {
+    opacity: 1;
+    border-bottom: 2px solid #FF4444;
+}
+
+.auth-form input {
+    width: 100%;
+    padding: 0.8rem;
+    margin-bottom: 1rem;
+    background: #333;
+    border: none;
+    border-radius: 5px;
+    color: white;
+}
+
+.auth-error {
+    color: #FF4444;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+}
+
+.signout-btn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    padding: 12px 24px;
+    background: #FF4444;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+    font-size: 1rem;
+    z-index: 100;
+}
+
+.signout-btn:hover {
+    background: #FF6666;
+}
+
+.section-title {
+    margin: 20px;
+    font-size: 1.5rem;
+    color: #fff;
+    opacity: 0.9;
+}
+
+.videos-section {
+    margin-bottom: 40px;
+}
+
+.video-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    color: white;
+}
+
+.video-info h4 {
+    margin: 0 0 5px 0;
+    font-size: 0.9rem;
+}
+
+.video-info p {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.8;
 } 
