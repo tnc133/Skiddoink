@@ -329,7 +329,9 @@ class ProfilePage {
             
             const videoElement = document.createElement('video');
             videoElement.src = video.url;
-            videoElement.volume = 1;
+            videoElement.muted = true;  // Always muted
+            videoElement.playsInline = true;  // Add this for better mobile behavior
+            videoElement.loop = true;  // Add this to loop the preview
             
             const videoInfo = document.createElement('div');
             videoInfo.className = 'video-info';
@@ -349,7 +351,10 @@ class ProfilePage {
             videosGrid.appendChild(thumbnail);
             
             // Play preview on hover
-            thumbnail.addEventListener('mouseenter', () => videoElement.play());
+            thumbnail.addEventListener('mouseenter', () => {
+                videoElement.muted = true;  // Ensure video is muted
+                videoElement.play();
+            });
             thumbnail.addEventListener('mouseleave', () => {
                 videoElement.pause();
                 videoElement.currentTime = 0;
@@ -359,6 +364,7 @@ class ProfilePage {
             thumbnail.addEventListener('click', () => {
                 localStorage.setItem('activeVideoId', video.id);
                 localStorage.setItem('scrollToVideo', 'true');
+                localStorage.setItem('viewingUserVideos', this.username);
                 window.location.href = './index.html';
             });
         });

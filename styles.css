@@ -973,3 +973,67 @@ h1 {
     }
 }
 
+.user-videos-header {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    padding: 0.8rem;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(8px);
+    z-index: 98;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-videos-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+}
+
+.close-user-videos {
+    position: absolute;
+    right: 16px;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s;
+    font-size: 18px;
+}
+
+.close-user-videos:hover {
+    color: white;
+}
+
+.header h1 {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.header h1 .skid {
+    color: #FF4500;  /* A brighter, more vivid orange */
+}
+
+.header h1 .doink {
+    color: #1E90FF;  /* A brighter, more vivid blue */
+}
+
+.feed:has(.user-videos-header) {
+    padding-top: 120px;
+}
+

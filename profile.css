@@ -66,6 +66,14 @@
     object-fit: cover;
     display: block;
     transition: transform 0.3s ease;
+    pointer-events: none;
+}
+
+.video-thumbnail:hover video {
+    transform: scale(1.1);
+    &:not([muted]) {
+        muted: true;
+    }
 }
 
 .no-videos-message {

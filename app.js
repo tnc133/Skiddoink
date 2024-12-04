@@ -250,10 +250,39 @@ class SkiddoinkApp {
         this.allVideos = videos;
         this.feed.innerHTML = '';
         
+        // Check if we're viewing a specific user's videos
+        const viewingUser = localStorage.getItem('viewingUserVideos');
+        const currentUser = localStorage.getItem('username');
+        
+        if (viewingUser) {
+            // Filter videos to show only the user's videos
+            videos = videos.filter(video => video.publisher === viewingUser);
+            
+            // Add a header to show whose videos we're viewing
+            const header = document.createElement('div');
+            header.className = 'user-videos-header';
+            header.innerHTML = `
+                <h2>@${viewingUser}'s Videos</h2>
+                <button class="close-user-videos">✕</button>
+            `;
+            this.feed.appendChild(header);
+
+            // Add close button handler
+            header.querySelector('.close-user-videos').addEventListener('click', () => {
+                localStorage.removeItem('viewingUserVideos');
+                window.location.reload();
+            });
+        } else {
+            // If on main feed, filter out the current user's videos
+            videos = videos.filter(video => video.publisher !== currentUser);
+        }
+
         if (!videos || videos.length === 0) {
             const noVideos = document.createElement('div');
             noVideos.className = 'loading-message';
-            noVideos.textContent = 'No videos available';
+            noVideos.textContent = viewingUser ? 
+                `@${viewingUser} has no videos yet` : 
+                'No videos available';
             this.feed.appendChild(noVideos);
             return;
         }
@@ -314,9 +343,18 @@ class SkiddoinkApp {
         this.isLoading = true;
 
         try {
-            // If we've reached the end, append the videos again
+            // Check if we're viewing a specific user's videos
+            const viewingUser = localStorage.getItem('viewingUserVideos');
+            
+            // If we've reached the end of the videos
             if (this.currentVideoIndex >= this.sortedVideos.length) {
-                // Shuffle a new copy of the videos and append them
+                // If viewing user videos, don't load more
+                if (viewingUser) {
+                    this.isLoading = false;
+                    return;
+                }
+                
+                // Otherwise, continue with normal infinite scroll behavior
                 const shuffleArray = arr => {
                     const newArr = [...arr];
                     for (let i = newArr.length - 1; i > 0; i--) {
@@ -326,7 +364,6 @@ class SkiddoinkApp {
                     return newArr;
                 };
 
-                // Add another set of shuffled videos to the end
                 this.sortedVideos = [
                     ...this.sortedVideos,
                     ...shuffleArray(this.allVideos)
