@@ -128,6 +128,19 @@ class SkiddoinkApp {
                 this.handleScroll();
             }
         }, { passive: true });
+
+        // Initialize following set
+        this.following = new Set();
+        this.loadFollowing();
+
+        // Add properties for double tap detection
+        this.lastTap = 0;
+        this.lastTapX = 0;
+        this.lastTapY = 0;
+        this.doubleTapDelay = 300; // milliseconds between taps
+        this.doubleTapRadius = 30; // pixels of tolerance for tap position
+
+        this.tapTimeout = null;  // Add this for single tap detection
     }
 
     checkUsername() {
@@ -341,7 +354,7 @@ class SkiddoinkApp {
                 if (!this.hasUserInteracted) {
                     const unmuteHint = document.createElement('div');
                     unmuteHint.className = 'unmute-hint';
-                    unmuteHint.innerHTML = '🔇 Tap to unmute';
+                    unmuteHint.innerHTML = '🔈 Tap to unmute';
                     container.appendChild(unmuteHint);
                 }
 
@@ -351,17 +364,74 @@ class SkiddoinkApp {
                         return;
                     }
 
-                    if (e.target === container || e.target === videoElement) {
-                        if (videoElement.paused) {
-                            videoElement.play();
-                        } else {
-                            if (videoElement.muted && this.hasUserInteracted) {
-                                videoElement.muted = false;
-                            } else {
-                                videoElement.pause();
-                            }
-                        }
+                    const currentTime = new Date().getTime();
+                    const tapX = e.clientX;
+                    const tapY = e.clientY;
+                    const timeDiff = currentTime - this.lastTap;
+                    const distance = Math.hypot(tapX - this.lastTapX, tapY - this.lastTapY);
+
+                    // Clear any pending single tap timeout
+                    if (this.tapTimeout) {
+                        clearTimeout(this.tapTimeout);
+                        this.tapTimeout = null;
                     }
+
+                    if (timeDiff < this.doubleTapDelay && distance < this.doubleTapRadius) {
+                        // Double tap detected
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const likeBtn = container.querySelector('.like-btn');
+                        if (likeBtn && !likeBtn.classList.contains('liked')) {
+                            const heart = document.createElement('div');
+                            heart.innerHTML = '❤️';
+                            heart.style.cssText = `
+                                position: absolute;
+                                left: ${tapX - container.getBoundingClientRect().left}px;
+                                top: ${tapY - container.getBoundingClientRect().top}px;
+                                transform: translate(-50%, -50%) scale(0);
+                                font-size: 100px;
+                                pointer-events: none;
+                                z-index: 1000;
+                                animation: heartPop 0.5s ease-out forwards;
+                            `;
+                            container.appendChild(heart);
+                            likeBtn.click();
+                            setTimeout(() => heart.remove(), 500);
+                        }
+                    } else {
+                        // Wait to see if this is a single tap
+                        this.tapTimeout = setTimeout(() => {
+                            // Single tap - handle play/pause and unmute
+                            if (e.target === container || e.target === videoElement) {
+                                if (videoElement.muted && !this.hasUserInteracted) {
+                                    // First interaction - just unmute and ensure playing
+                                    videoElement.muted = false;
+                                    this.hasUserInteracted = true;
+                                    if (videoElement.paused) {
+                                        videoElement.play();
+                                    }
+                                    // Remove unmute hint if it exists
+                                    const unmuteHint = container.querySelector('.unmute-hint');
+                                    if (unmuteHint) {
+                                        unmuteHint.remove();
+                                    }
+                                } else {
+                                    // Normal play/pause after first interaction
+                                    if (videoElement.paused) {
+                                        videoElement.play();
+                                    } else {
+                                        videoElement.pause();
+                                    }
+                                }
+                            }
+                            this.tapTimeout = null;
+                        }, this.doubleTapDelay);
+                    }
+
+                    this.lastTap = currentTime;
+                    this.lastTapX = tapX;
+                    this.lastTapY = tapY;
                 });
 
                 // Add interaction buttons
@@ -482,13 +552,37 @@ class SkiddoinkApp {
                             <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile">
                             <div>
                                 <h3>${video.title || 'Untitled Video'}</h3>
-                                <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
+                                <div class="publisher-row">
+                                    <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
+                                    ${video.publisher && video.publisher !== '[Deleted User]' && video.publisher !== localStorage.getItem('username') ? `
+                                        <button class="follow-btn" data-username="${video.publisher}" data-following="${this.following.has(video.publisher)}">
+                                            ${this.following.has(video.publisher) ? 'Following' : 'Follow'}
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                         </div>
                         <p class="description">${video.description || ''}</p>
                         <p class="date">Posted ${this.formatDate(video.timestamp)}</p>
                     </div>
                 `;
+
+                // Add follow button handler
+                const followBtn = infoOverlay.querySelector('.follow-btn');
+                if (followBtn) {
+                    followBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const publisherUsername = followBtn.dataset.username;
+                        await this.toggleFollow(publisherUsername);
+                        
+                        // Update all follow buttons for this user
+                        document.querySelectorAll(`.follow-btn[data-username="${publisherUsername}"]`)
+                            .forEach(btn => {
+                                btn.textContent = this.following.has(publisherUsername) ? 'Following' : 'Follow';
+                                btn.dataset.following = this.following.has(publisherUsername).toString();
+                            });
+                    });
+                }
 
                 // Add delete button (hidden by default)
                 const deleteButton = document.createElement('button');
@@ -498,13 +592,14 @@ class SkiddoinkApp {
                 // Show delete button by default for video owner, hidden for others
                 const currentUser = localStorage.getItem('username');
                 const isOwner = video.publisher === currentUser;
-                deleteButton.style.display = isOwner ? 'block' : 'none';
+                const isAdmin = currentUser === 'tnc13';
+                deleteButton.style.display = (isOwner || isAdmin) ? 'block' : 'none';
 
                 // Modify delete functionality
                 deleteButton.addEventListener('click', async (e) => {
                     e.stopPropagation(); // Prevent video play/pause
                     
-                    if (isOwner) {
+                    if (isOwner || isAdmin) {
                         if (confirm('Are you sure you want to delete this video?')) {
                             try {
                                 await this.videosRef.child(video.id).remove();
@@ -514,33 +609,18 @@ class SkiddoinkApp {
                                 alert('Failed to delete video');
                             }
                         }
-                    } else {
-                        const password = prompt('Enter password to delete:');
-                        if (password === '1323') {
-                            if (confirm('Are you sure you want to delete this video?')) {
-                                try {
-                                    await this.videosRef.child(video.id).remove();
-                                    container.remove();
-                                } catch (error) {
-                                    console.error('Error deleting video:', error);
-                                    alert('Failed to delete video');
-                                }
-                            }
-                        } else {
-                            alert('Incorrect password');
-                        }
                     }
                 });
 
                 // Modify ctrl key event listeners to only apply for non-owners
                 document.addEventListener('keydown', (e) => {
-                    if (e.ctrlKey && !isOwner) {
+                    if (e.ctrlKey && !isOwner && !isAdmin) {
                         deleteButton.style.display = 'block';
                     }
                 });
 
                 document.addEventListener('keyup', (e) => {
-                    if (!e.ctrlKey && !isOwner) {
+                    if (!e.ctrlKey && !isOwner && !isAdmin) {
                         deleteButton.style.display = 'none';
                     }
                 });
@@ -865,6 +945,7 @@ class SkiddoinkApp {
                 div.className = 'comment-item';
                 const isCreator = comment.username === video.publisher;
                 const isOwnComment = comment.username === localStorage.getItem('username');
+                const isAdmin = localStorage.getItem('username') === 'tnc13';
                 const currentUser = localStorage.getItem('username');
                 const canManagePin = currentUser === video.publisher;
                 
@@ -878,7 +959,7 @@ class SkiddoinkApp {
                             </a>
                             ${comment.pinned ? '<span class="pinned-badge"> Pinned</span>' : ''}
                             <span class="comment-time">${this.formatDate(comment.timestamp)}</span>
-                            ${isOwnComment ? '<button class="delete-comment-btn">🗑️</button>' : ''}
+                            ${isOwnComment || isAdmin ? '<button class="delete-comment-btn">🗑️</button>' : ''}
                         </div>
                         <p class="comment-text">${comment.text}</p>
                         <div class="comment-actions">
@@ -895,7 +976,7 @@ class SkiddoinkApp {
                     </div>
                 `;
 
-                // Add delete handler
+                // Modify delete handler to allow admin deletion
                 const deleteBtn = div.querySelector('.delete-comment-btn');
                 if (deleteBtn) {
                     deleteBtn.addEventListener('click', async () => {
@@ -980,6 +1061,92 @@ class SkiddoinkApp {
         // If we're near the bottom, load more videos
         if (pageOffset > lastVideoOffset - 1000) {  // 1000px threshold
             this.loadMoreVideos();
+        }
+    }
+
+    async loadFollowing() {
+        const username = localStorage.getItem('username');
+        if (!username) return;
+        
+        try {
+            // Load from both following and users nodes
+            const [followingSnapshot, userFollowingSnapshot] = await Promise.all([
+                this.database.ref(`following/${username}`).once('value'),
+                this.database.ref(`users/${username}/following`).once('value')
+            ]);
+            
+            const followingData = followingSnapshot.val() || {};
+            const userFollowingData = userFollowingSnapshot.val() || {};
+            
+            // Combine both sources
+            this.following = new Set([
+                ...Object.keys(followingData),
+                ...Object.keys(userFollowingData)
+            ]);
+            
+            // Update any visible follow buttons
+            this.following.forEach(publisherUsername => {
+                document.querySelectorAll(`.follow-btn[data-username="${publisherUsername}"]`)
+                    .forEach(btn => {
+                        btn.textContent = 'Following';
+                        btn.dataset.following = 'true';
+                    });
+            });
+        } catch (error) {
+            console.error('Error loading following data:', error);
+        }
+    }
+
+    async toggleFollow(publisherUsername) {
+        const username = localStorage.getItem('username');
+        if (!username) {
+            alert('Please sign in to follow users');
+            return;
+        }
+        
+        if (username === publisherUsername) return;
+        if (!publisherUsername || publisherUsername === '[Deleted User]') {
+            alert('Cannot follow this user');
+            return;
+        }
+        
+        try {
+            const followingRef = this.database.ref(`following/${username}/${publisherUsername}`);
+            const followersRef = this.database.ref(`followers/${publisherUsername}/${username}`);
+            const userRef = this.database.ref(`users/${username}/following/${publisherUsername}`);
+            
+            if (this.following.has(publisherUsername)) {
+                // Unfollow
+                await Promise.all([
+                    followingRef.remove(),
+                    followersRef.remove(),
+                    userRef.remove()
+                ]);
+                this.following.delete(publisherUsername);
+            } else {
+                // Follow
+                const followData = {
+                    timestamp: Date.now()
+                };
+                
+                await Promise.all([
+                    followingRef.set(followData),
+                    followersRef.set(followData),
+                    userRef.set(followData)
+                ]);
+                this.following.add(publisherUsername);
+            }
+
+            // Update all follow buttons for this user
+            document.querySelectorAll(`.follow-btn[data-username="${publisherUsername}"]`)
+                .forEach(btn => {
+                    btn.textContent = this.following.has(publisherUsername) ? 'Following' : 'Follow';
+                    btn.dataset.following = this.following.has(publisherUsername).toString();
+                });
+
+        } catch (error) {
+            console.error('Error toggling follow:', error);
+            alert('Failed to update follow status');
         }
     }
 }

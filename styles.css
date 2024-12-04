@@ -614,3 +614,47 @@ video {
     gap: 8px;
 }
 
+.publisher-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.follow-btn {
+    background: #FF4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.follow-btn:hover {
+    background: #FF6666;
+}
+
+.follow-btn[data-following="true"] {
+    background: #333;
+}
+
+.follow-btn[data-following="true"]:hover {
+    background: #444;
+}
+
+@keyframes heartPop {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    70% {
+        transform: translate(-50%, -50%) scale(1.2);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0;
+    }
+}
+

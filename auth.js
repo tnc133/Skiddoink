@@ -18,16 +18,19 @@ class AuthManager {
     }
 
     async signUp(username, password) {
+        // Validate username format and length
+        const usernameRegex = /^[a-zA-Z0-9_.-]{3,20}$/;
+        if (!usernameRegex.test(username)) {
+            throw new Error('Username must be 3-20 characters and can only contain letters, numbers, dots, dashes, and underscores');
+        }
+
         // Check if username exists
         const snapshot = await this.usersRef.orderByChild('username').equalTo(username).once('value');
         if (snapshot.exists()) {
             throw new Error('Username already exists');
         }
 
-        // Validate input
-        if (!username || username.length < 3) {
-            throw new Error('Username must be at least 3 characters');
-        }
+        // Validate password
         if (!password || password.length < 6) {
             throw new Error('Password must be at least 6 characters');
         }
