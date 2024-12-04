@@ -51,6 +51,7 @@ body {
 }
 
 .feed {
+    width: 100%;
     height: 100vh;
     overflow-y: scroll;
     position: relative;
@@ -67,8 +68,8 @@ body {
 }
 
 .video-container {
-    height: 100vh;
     width: 100%;
+    height: 100vh;
     scroll-snap-align: center;
     scroll-snap-stop: always;
     position: relative;
@@ -744,9 +745,7 @@ video {
 
 .search-results {
     width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
-    padding: 16px;
+    padding: 12px;
 }
 
 .search-section {
@@ -900,9 +899,9 @@ video {
 }
 
 .videos-grid {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
 }
 
 .back-btn {
@@ -918,5 +917,59 @@ h1 {
     left: 50%;
     transform: translateX(-50%);
     margin: 0;
+}
+
+/* Mobile styles (default) */
+.feed {
+    width: 100%;
+    height: 100vh;
+}
+
+.video-container {
+    width: 100%;
+    height: 100vh;
+}
+
+.search-results {
+    width: 100%;
+    padding: 12px;
+}
+
+.users-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.videos-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+/* Mobile-specific adjustments (screens smaller than 768px) */
+@media screen and (max-width: 767px) {
+    .header {
+        padding: 0.5rem;
+    }
+
+    .video-info {
+        padding: 40px 12px 12px 12px;
+    }
+
+    .video-text h3 {
+        font-size: 1rem;
+    }
+
+    .interaction-buttons {
+        right: 8px;
+        bottom: 100px;
+    }
+
+    .interaction-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 1.5rem;
+    }
 }
 

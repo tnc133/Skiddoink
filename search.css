@@ -348,4 +348,42 @@
     text-align: center;
     color: #666;
     padding: 40px;
+}
+
+/* Mobile styles for search page */
+@media screen and (max-width: 767px) {
+    .search-header {
+        padding: 8px;
+    }
+
+    .search-input {
+        font-size: 0.9rem;
+        padding: 8px 32px;
+    }
+
+    .search-results {
+        padding: 8px;
+    }
+
+    .user-result {
+        padding: 8px;
+    }
+
+    .user-result img {
+        width: 40px;
+        height: 40px;
+    }
+
+    .videos-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .video-thumbnail {
+        height: 180px;
+    }
+
+    .video-info h4 {
+        font-size: 0.9rem;
+    }
 } 

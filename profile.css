@@ -596,4 +596,45 @@
 .sort-filter select:focus {
     outline: none;
     box-shadow: 0 0 0 2px #FF4444;
+}
+
+/* Mobile styles for profile page */
+@media screen and (max-width: 767px) {
+    .profile-container {
+        padding-top: 60px;
+        padding-bottom: 60px;
+    }
+
+    .profile-header {
+        padding: 12px;
+    }
+
+    .profile-pic {
+        width: 80px;
+        height: 80px;
+    }
+
+    .profile-username {
+        font-size: 1.5rem;
+    }
+
+    .profile-stats {
+        gap: 20px;
+        padding: 12px;
+    }
+
+    .videos-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .video-thumbnail {
+        aspect-ratio: 9/16;
+    }
+
+    .settings-modal .settings-content {
+        width: 95%;
+        padding: 1rem;
+    }
 } 
