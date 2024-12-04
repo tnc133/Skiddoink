@@ -141,6 +141,10 @@ class SkiddoinkApp {
         this.doubleTapRadius = 30; // pixels of tolerance for tap position
 
         this.tapTimeout = null;  // Add this for single tap detection
+
+        if (this.feed) {
+            this.setupSearch();
+        }
     }
 
     checkUsername() {
@@ -1148,6 +1152,13 @@ class SkiddoinkApp {
             console.error('Error toggling follow:', error);
             alert('Failed to update follow status');
         }
+    }
+
+    setupSearch() {
+        const searchButton = document.querySelector('.search-button');
+        searchButton.addEventListener('click', () => {
+            window.location.href = './search.html';
+        });
     }
 }
 

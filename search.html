@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search - Skiddoink</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="search.css">
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <a href="javascript:history.back()" class="back-btn">←</a>
+            <div class="search-input-container">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" placeholder="Search videos and users" autofocus>
+            </div>
+        </div>
+        
+        <div class="search-results">
+            <!-- Results will be inserted here -->
+            <div class="initial-message">Start typing to search...</div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Initialize Firebase first -->
+    <script src="firebase-config.js"></script>
+    
+    <!-- App Scripts -->
+    <script src="constants.js"></script>
+    <script src="search.js"></script>
+</body>
+</html> 
