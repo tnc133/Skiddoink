@@ -329,7 +329,7 @@ class ProfilePage {
             
             const videoElement = document.createElement('video');
             videoElement.src = video.url;
-            videoElement.muted = true;
+            videoElement.volume = 1;
             
             const videoInfo = document.createElement('div');
             videoInfo.className = 'video-info';

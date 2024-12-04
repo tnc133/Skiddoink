@@ -57,7 +57,7 @@ class SkiddoinkApp {
         // Replace the scroll event listener with the original Intersection Observer
         const observer = new IntersectionObserver(
             (entries) => {
-                if (this.isInCommentMode || this.isTransitioning) return;
+                if (this.isInCommentMode || this.isTransitioning || this.isWaitingForStart) return;
                 
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -75,7 +75,6 @@ class SkiddoinkApp {
                         // Play this video
                         if (videoElement) {
                             videoElement.currentTime = 0;
-                            videoElement.muted = !this.hasUserInteracted;
                             videoElement.play().catch(console.error);
                             container.classList.add('active');
                         }
@@ -113,9 +112,6 @@ class SkiddoinkApp {
             }, { once: true });
         });
 
-        // Try to detect if autoplay with sound is allowed
-        this.checkAutoplaySupport();
-
         this.isInCommentMode = false;
 
         // Add this property to store observers
@@ -145,6 +141,9 @@ class SkiddoinkApp {
         if (this.feed) {
             this.setupSearch();
         }
+
+        // Remove all muting related code and replace with welcome popup
+        this.showWelcomePopup();
     }
 
     checkUsername() {
@@ -348,19 +347,10 @@ class SkiddoinkApp {
                 videoElement.src = video.url;
                 videoElement.loop = true;
                 videoElement.playsInline = true;
-                videoElement.muted = true; // Start muted always
                 videoElement.volume = 1;
                 videoElement.controls = false;
                 videoElement.setAttribute('playsinline', '');
                 videoElement.setAttribute('webkit-playsinline', '');
-
-                // Add a visual indicator for unmuting
-                if (!this.hasUserInteracted) {
-                    const unmuteHint = document.createElement('div');
-                    unmuteHint.className = 'unmute-hint';
-                    unmuteHint.innerHTML = '🔈 Tap to unmute';
-                    container.appendChild(unmuteHint);
-                }
 
                 // Update click handler
                 container.addEventListener('click', (e) => {
@@ -442,18 +432,17 @@ class SkiddoinkApp {
                 const interactionButtons = document.createElement('div');
                 interactionButtons.className = 'interaction-buttons';
                 const isLiked = this.likedVideos.has(video.id);
+                const currentUsername = localStorage.getItem('username');
+                const isOwnVideo = video.publisher === currentUsername;
+
                 interactionButtons.innerHTML = `
-                    <button class="interaction-btn like-btn ${isLiked ? 'liked' : ''}">
+                    <button class="interaction-btn like-btn ${isLiked ? 'liked' : ''}" ${isOwnVideo ? 'disabled' : ''}>
                         ${isLiked ? '❤️' : '🤍'}
                         <span>${video.likes || 0}</span>
                     </button>
                     <button class="interaction-btn comment-btn">
                         💬
                         <span class="comment-count">0</span>
-                    </button>
-                    <button class="interaction-btn share-btn">
-                        ↗️
-                        <span>Share</span>
                     </button>
                 `;
 
@@ -462,6 +451,10 @@ class SkiddoinkApp {
                 likeBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    
+                    if (video.publisher === localStorage.getItem('username')) {
+                        return; // Do nothing if it's the user's own video
+                    }
                     
                     // Lock scroll and mark interaction
                     this.isScrollLocked = true;
@@ -594,9 +587,8 @@ class SkiddoinkApp {
                 deleteButton.innerHTML = '🗑️';
 
                 // Show delete button by default for video owner, hidden for others
-                const currentUser = localStorage.getItem('username');
-                const isOwner = video.publisher === currentUser;
-                const isAdmin = currentUser === 'tnc13';
+                const isOwner = video.publisher === currentUsername;
+                const isAdmin = currentUsername === 'tnc13';
                 deleteButton.style.display = (isOwner || isAdmin) ? 'block' : 'none';
 
                 // Modify delete functionality
@@ -670,7 +662,6 @@ class SkiddoinkApp {
 
                             // Play this video
                             videoElement.currentTime = 0;
-                            videoElement.muted = !this.hasUserInteracted;
                             videoElement.play().catch(console.error);
                             container.classList.add('active');
                         }
@@ -731,25 +722,6 @@ class SkiddoinkApp {
             localStorage.setItem(this.likedVideosKey, JSON.stringify([...this.likedVideos]));
         } catch (error) {
             console.error('Error loading user likes:', error);
-        }
-    }
-
-    // Add new method to check autoplay support
-    async checkAutoplaySupport() {
-        try {
-            const video = document.createElement('video');
-            video.src = 'data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDJtcDQxaXNvbWF2YzEAAATKbW9vdgAAAGxtdmhkAAAAANLEP5XSxD+VAAB1MAAAdU4AAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAACFpb2RzAAAAABCAgIAQAE////9//w6AgIAEAAAAAQAABDV0cmFrAAAAXHRraGQAAAAH0sQ/ldLEP5UAAAABAAAAAAAAdU4AAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAoAAAAFoAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAHVOAAAH0gABAAAAAAOtbWRpYQAAACBtZGhkAAAAANLEP5XSxD+VAAB1MAAAdU4AAAAAAAAAIGhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABMLVNNQVNIIHZpZGVvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABj//wAAADFhdmNDAWQAC//hABlnZAALrNlfllw4QAAAAwBAAAADAKPFCmWAAQAFaOvssiwAAAAYc3R0cwAAAAAAAAABAAAAFAAAAAAAAAAc3RzYwAAAAAAAAAEAAAABAAAABQAAAAEAAAAIAAAACQAAAAUAAAAMAAAABQAAAAgAAAAFAAAADAAAAAEAAAAIAAAAAQAAAAgAAAAIAAAAFAAAABIAAAAUAAAAEgAAABQAAAASAAAAFAAAABIAAAAUAAAAGHN0c3oAAAAAAAAAAwAAABQAAAAgAAAALAAAADh1ZHRhAAAAOG1ldGEAAAAAAAAAImhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNTguNDUuMTAw';
-            video.muted = false;
-            video.volume = 0.01; // Very quiet test
-            video.style.display = 'none';
-            document.body.appendChild(video);
-            
-            await video.play();
-            this.hasUserInteracted = true; // If autoplay with sound works, treat as interacted
-            document.body.removeChild(video);
-        } catch (error) {
-            console.log('Autoplay with sound not allowed:', error);
-            this.hasUserInteracted = false;
         }
     }
 
@@ -1158,6 +1130,44 @@ class SkiddoinkApp {
         const searchButton = document.querySelector('.search-button');
         searchButton.addEventListener('click', () => {
             window.location.href = './search.html';
+        });
+    }
+
+    showWelcomePopup() {
+        const overlay = document.createElement('div');
+        overlay.className = 'welcome-overlay';
+        overlay.innerHTML = `
+            <div class="welcome-popup">
+                <h2>Welcome to Skiddoink</h2>
+                <button class="start-watching-btn">Start Watching</button>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // Pause all videos initially
+        document.querySelectorAll('video').forEach(video => {
+            video.pause();
+        });
+
+        // Prevent any video from playing until "Start Watching" is clicked
+        const observer = new IntersectionObserver(() => {}, { threshold: 0.7 });
+        this.isWaitingForStart = true;
+
+        const startBtn = overlay.querySelector('.start-watching-btn');
+        startBtn.addEventListener('click', () => {
+            overlay.remove();
+            this.isWaitingForStart = false;
+            
+            // Start playing the first visible video
+            const activeContainer = this.feed.querySelector('.video-container');
+            if (activeContainer) {
+                const video = activeContainer.querySelector('video');
+                if (video) {
+                    video.play().catch(console.error);
+                    activeContainer.classList.add('active');
+                }
+            }
         });
     }
 }
