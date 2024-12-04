@@ -11,6 +11,9 @@
     <div class="app">
         <div class="header">
             <h1>Skiddoink</h1>
+            <button class="search-button">
+                🔍 <span>Search</span>
+            </button>
             <a href="./profile.html" class="username-display"></a>
         </div>
         
@@ -31,5 +34,19 @@
     <script src="constants.js"></script>
     <script src="auth.js"></script>
     <script src="app.js"></script>
+
+    <!-- Add this modal markup at the bottom of the body -->
+    <div class="search-modal">
+        <div class="search-header">
+            <div class="search-input-container">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" placeholder="Search videos and users">
+            </div>
+            <button class="close-search">×</button>
+        </div>
+        <div class="search-results">
+            <!-- Results will be inserted here -->
+        </div>
+    </div>
 </body>
 </html>

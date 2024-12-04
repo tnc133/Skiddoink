@@ -658,3 +658,162 @@ video {
     }
 }
 
+.search-button {
+    background: rgba(22, 24, 35, 0.7);
+    border: none;
+    border-radius: 92px;
+    padding: 8px 16px;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.search-button span {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.search-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: black;
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+}
+
+.search-modal.active {
+    display: flex;
+}
+
+.search-header {
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid #333;
+}
+
+.search-input-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input {
+    width: 100%;
+    background: #222;
+    border: none;
+    border-radius: 92px;
+    padding: 12px 40px;
+    color: white;
+    font-size: 1rem;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    opacity: 0.7;
+}
+
+.close-search {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    padding: 8px;
+    cursor: pointer;
+}
+
+.search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.search-section {
+    margin-bottom: 24px;
+}
+
+.search-section-title {
+    font-size: 1rem;
+    opacity: 0.8;
+    margin-bottom: 16px;
+}
+
+.user-result {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+.user-result:hover {
+    background: #222;
+}
+
+.user-result img {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-info h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.user-info p {
+    margin: 4px 0 0 0;
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+.video-result {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+.video-result:hover {
+    background: #222;
+}
+
+.video-thumbnail {
+    width: 150px;
+    height: 200px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #333;
+}
+
+.video-thumbnail video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.video-info h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.video-info p {
+    margin: 4px 0 0 0;
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
