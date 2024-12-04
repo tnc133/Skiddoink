@@ -831,6 +831,8 @@ class SkiddoinkApp {
                 div.className = 'comment-item';
                 const isCreator = comment.username === video.publisher;
                 const isOwnComment = comment.username === localStorage.getItem('username');
+                const currentUser = localStorage.getItem('username');
+                const canManagePin = currentUser === video.publisher;
                 
                 div.innerHTML = `
                     <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
@@ -850,7 +852,7 @@ class SkiddoinkApp {
                                 ${comment.isLiked ? '❤️' : '🤍'}
                                 <span>${comment.likes || 0}</span>
                             </button>
-                            ${isCreator || video.publisher === localStorage.getItem('username') ? `
+                            ${canManagePin ? `
                                 <button class="pin-comment-btn" data-comment-id="${comment.id}">
                                     ${comment.pinned ? 'Unpin' : 'Pin'}
                                 </button>
