@@ -57,7 +57,7 @@ class SkiddoinkApp {
         // Replace the scroll event listener with the original Intersection Observer
         const observer = new IntersectionObserver(
             (entries) => {
-                if (this.isInCommentMode) return; // Ignore all intersection events during comment mode
+                if (this.isInCommentMode || this.isTransitioning) return;
                 
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -73,16 +73,16 @@ class SkiddoinkApp {
                         }
 
                         // Play this video
-                        videoElement.currentTime = 0;
-                        videoElement.muted = !this.hasUserInteracted;
-                        videoElement.play().catch(console.error);
-                        container.classList.add('active');
+                        if (videoElement) {
+                            videoElement.currentTime = 0;
+                            videoElement.muted = !this.hasUserInteracted;
+                            videoElement.play().catch(console.error);
+                            container.classList.add('active');
+                        }
                     }
                 });
             },
-            {
-                threshold: 0.7
-            }
+            { threshold: 0.7 }
         );
 
         // Add scroll lock property
@@ -694,17 +694,51 @@ class SkiddoinkApp {
 
         const closeBtn = modal.querySelector('.close-comments');
         closeBtn.addEventListener('click', () => {
+            const activeContainer = this.feed.querySelector('.video-container.active');
+            const activeVideo = activeContainer?.querySelector('video');
+            const wasPlaying = activeVideo && !activeVideo.paused;
+            
+            // Prevent any intersection observer triggers during the transition
+            this.isTransitioning = true;
+            
             modal.classList.remove('active');
+            
             setTimeout(() => {
                 modal.remove();
                 this.isInCommentMode = false;
                 
-                // Reconnect all observers
+                // Reconnect observers but modify their callback behavior
                 this.observers.forEach((observer, container) => {
-                    if (container.isConnected) { // Only if container still exists
+                    if (container.isConnected && container !== activeContainer) {
                         observer.observe(container);
                     }
                 });
+
+                // Restore the active video state without touching currentTime
+                if (activeContainer && activeVideo) {
+                    activeContainer.classList.add('active');
+                    
+                    if (wasPlaying) {
+                        // Only ensure the video keeps playing without modifying time
+                        if (activeVideo.paused) {
+                            activeVideo.play()
+                                .then(() => {
+                                    setTimeout(() => {
+                                        this.isTransitioning = false;
+                                    }, 100);
+                                })
+                                .catch(console.error);
+                        } else {
+                            setTimeout(() => {
+                                this.isTransitioning = false;
+                            }, 100);
+                        }
+                    } else {
+                        this.isTransitioning = false;
+                    }
+                } else {
+                    this.isTransitioning = false;
+                }
             }, 300);
         });
 
