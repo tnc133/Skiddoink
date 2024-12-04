@@ -41,6 +41,12 @@ class ProfilePage {
         this.setupUI();
         this.loadUserData();
         this.loadUserVideos();
+        
+        this.currentVideos = [];
+        this.sortSelect = document.getElementById('videoSort');
+        if (this.sortSelect) {
+            this.sortSelect.addEventListener('change', () => this.sortVideos());
+        }
     }
 
     async loadUserData() {
@@ -277,6 +283,11 @@ class ProfilePage {
     async loadUserVideos() {
         const videosGrid = document.querySelector('.videos-grid');
         const noVideosMessage = document.querySelector('.no-videos-message');
+        const sectionTitle = document.querySelector('.section-title');
+        
+        // Set appropriate title
+        const isOwnProfile = this.username === localStorage.getItem('username');
+        sectionTitle.textContent = isOwnProfile ? 'Your Videos' : `${this.username}'s Videos`;
         
         this.videosRef.orderByChild('publisher').equalTo(this.username).once('value', snapshot => {
             const videos = snapshot.val();
@@ -286,33 +297,69 @@ class ProfilePage {
                 return;
             }
             
-            noVideosMessage.style.display = 'none';
-            videosGrid.innerHTML = ''; // Clear existing videos
+            // Store videos for sorting
+            this.currentVideos = Object.entries(videos).map(([id, video]) => ({
+                ...video,
+                id,
+                timestamp: video.timestamp || 0
+            }));
+
+            this.sortVideos();
+        });
+    }
+
+    sortVideos() {
+        const sortBy = this.sortSelect.value;
+        const videosGrid = document.querySelector('.videos-grid');
+        videosGrid.innerHTML = '';
+
+        // Sort videos based on selected option
+        const sortedVideos = [...this.currentVideos].sort((a, b) => {
+            if (sortBy === 'date') {
+                return b.timestamp - a.timestamp;
+            } else { // popular
+                return (b.likes || 0) - (a.likes || 0);
+            }
+        });
+
+        // Display sorted videos
+        sortedVideos.forEach(video => {
+            const thumbnail = document.createElement('div');
+            thumbnail.className = 'video-thumbnail';
             
-            Object.entries(videos).forEach(([id, video]) => {
-                const thumbnail = document.createElement('div');
-                thumbnail.className = 'video-thumbnail';
-                
-                const videoElement = document.createElement('video');
-                videoElement.src = video.url;
-                videoElement.muted = true;
-                
-                thumbnail.appendChild(videoElement);
-                videosGrid.appendChild(thumbnail);
-                
-                // Play preview on hover
-                thumbnail.addEventListener('mouseenter', () => videoElement.play());
-                thumbnail.addEventListener('mouseleave', () => {
-                    videoElement.pause();
-                    videoElement.currentTime = 0;
-                });
-                
-                // Go to main feed and play this video when clicked
-                thumbnail.addEventListener('click', () => {
-                    localStorage.setItem('activeVideoId', id);
-                    localStorage.setItem('scrollToVideo', 'true');
-                    window.location.href = './index.html';
-                });
+            const videoElement = document.createElement('video');
+            videoElement.src = video.url;
+            videoElement.muted = true;
+            
+            const videoInfo = document.createElement('div');
+            videoInfo.className = 'video-info';
+            videoInfo.innerHTML = `
+                <h4>${video.title || 'Untitled Video'}</h4>
+                <p>@${video.publisher || '[Deleted User]'}</p>
+            `;
+
+            const likesCounter = document.createElement('div');
+            likesCounter.className = 'video-likes';
+            likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
+
+            thumbnail.appendChild(videoElement);
+            thumbnail.appendChild(videoInfo);
+            thumbnail.appendChild(likesCounter);
+            
+            videosGrid.appendChild(thumbnail);
+            
+            // Play preview on hover
+            thumbnail.addEventListener('mouseenter', () => videoElement.play());
+            thumbnail.addEventListener('mouseleave', () => {
+                videoElement.pause();
+                videoElement.currentTime = 0;
+            });
+            
+            // Go to main feed and play this video when clicked
+            thumbnail.addEventListener('click', () => {
+                localStorage.setItem('activeVideoId', video.id);
+                localStorage.setItem('scrollToVideo', 'true');
+                window.location.href = './index.html';
             });
         });
     }

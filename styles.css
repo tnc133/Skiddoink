@@ -21,10 +21,11 @@ body {
     width: 100%;
     padding: 1rem;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     background: transparent;
     z-index: 100;
+    gap: 16px;
 }
 
 #uploadBtn {
@@ -659,6 +660,8 @@ video {
 }
 
 .search-button {
+    position: absolute;
+    right: 1rem;
     background: rgba(22, 24, 35, 0.7);
     border: none;
     border-radius: 92px;
@@ -702,7 +705,6 @@ video {
 }
 
 .search-input-container {
-    flex: 1;
     position: relative;
     display: flex;
     align-items: center;
