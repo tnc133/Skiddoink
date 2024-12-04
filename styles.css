@@ -4,24 +4,37 @@
     box-sizing: border-box;
 }
 
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    position: relative;
+    overflow-x: hidden;
+}
+
 body {
     background: black;
     color: white;
     font-family: Arial, sans-serif;
+    overflow-x: hidden;
 }
 
 .app {
     height: 100vh;
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
+    position: relative;
+    overflow-x: hidden;
 }
 
 .header {
     position: fixed;
     top: 0;
+    left: 0;
     width: 100%;
     padding: 1rem;
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
     background: transparent;
     z-index: 100;
@@ -65,6 +78,7 @@ body {
 /* Optional: Add smooth scrolling to the entire page */
 html {
     scroll-behavior: smooth;
+    overflow-x: hidden;
 }
 
 video {
@@ -678,12 +692,27 @@ video {
     align-items: center;
     gap: 16px;
     border-bottom: 1px solid #333;
+    position: relative;
+}
+
+.back-btn {
+    color: white;
+    text-decoration: none;
+    font-size: 1.5rem;
+    padding: 10px;
+    position: absolute;
+    left: 16px;
+    z-index: 1;
 }
 
 .search-input-container {
     position: relative;
     display: flex;
     align-items: center;
+    flex: 1;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 0 48px;
 }
 
 .search-input {
@@ -703,6 +732,8 @@ video {
 }
 
 .close-search {
+    position: absolute;
+    right: 16px;
     background: none;
     border: none;
     color: white;
@@ -712,8 +743,9 @@ video {
 }
 
 .search-results {
-    flex: 1;
-    overflow-y: auto;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
     padding: 16px;
 }
 
@@ -859,5 +891,32 @@ video {
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
+}
+
+.users-section, .videos-section {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.videos-grid {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.back-btn {
+    color: white;
+    text-decoration: none;
+    font-size: 1.5rem;
+    padding: 10px;
+    margin-left: 10px;
+}
+
+h1 {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
 }
 
