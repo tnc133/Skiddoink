@@ -243,6 +243,24 @@ class ProfilePage {
                 }
                 profileInfo.appendChild(followBtn);
             }
+
+            // Show change photo overlay only on own profile
+            const profilePicOverlay = document.querySelector('.profile-pic-overlay');
+            if (profilePicOverlay) {
+                if (isOwnProfile) {
+                    profilePicOverlay.style.display = 'flex';
+                    
+                    // Add click handler to profile picture for own profile
+                    const profilePic = document.querySelector('.profile-pic');
+                    if (profilePic) {
+                        profilePic.addEventListener('click', () => {
+                            this.handleProfilePicUpload();
+                        });
+                    }
+                } else {
+                    profilePicOverlay.style.display = 'none';
+                }
+            }
         } catch (error) {
             console.error('Error in loadUserData:', error);
         }
