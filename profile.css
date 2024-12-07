@@ -906,4 +906,270 @@
 
 .like-btn.liked {
     animation: likePulse 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-} 
+}
+
+/* Update existing settings section styles */
+.settings-section {
+    padding: 24px;
+    background: #111;
+    border-radius: 12px;
+}
+
+.settings-input-group {
+    margin-bottom: 24px;
+}
+
+.settings-input-group h4 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 16px;
+    opacity: 0.9;
+}
+
+.mature-content-toggle {
+    background: #1a1a1a;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #333;
+    transition: border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.toggle-container {
+    position: relative;
+    width: 52px;
+    height: 28px;
+    flex-shrink: 0;
+}
+
+.toggle-container input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #333;
+    transition: 0.3s;
+    border-radius: 34px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .toggle-slider {
+    background-color: #FF4444;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.toggle-label {
+    flex: 1;
+}
+
+.toggle-label span {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.toggle-description {
+    font-size: 0.85rem;
+    color: #888;
+    line-height: 1.4;
+    margin: 0;
+}
+
+/* Add hover and focus states */
+.toggle-container:hover .toggle-slider {
+    background-color: #444;
+}
+
+.toggle-container input:checked:hover + .toggle-slider {
+    background-color: #ff5555;
+}
+
+.toggle-container input:focus + .toggle-slider {
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.4), 0 0 0 2px rgba(255, 68, 68, 0.2);
+}
+
+.mature-warning {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.mature-warning video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(8px);
+}
+
+.mature-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 6px 12px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 2;
+    color: #FF4444;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.mature-count {
+    color: white;
+    opacity: 0.9;
+}
+
+.mature-warning .video-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+}
+
+.mature-warning .video-info h4 {
+    color: #FF4444;
+    margin: 0 0 4px 0;
+}
+
+.mature-warning .video-info p {
+    color: white;
+    margin: 0;
+    opacity: 0.8;
+}
+
+.mature-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.mature-modal.active {
+    opacity: 1;
+}
+
+.mature-modal-content {
+    background: #1a1a1a;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 16px;
+    padding: 24px;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    border: 1px solid #333;
+}
+
+.mature-modal.active .mature-modal-content {
+    transform: scale(1);
+}
+
+.mature-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mature-warning-icon {
+    font-size: 24px;
+}
+
+.mature-modal-header h3 {
+    margin: 0;
+    color: #FF4444;
+    font-size: 1.2rem;
+}
+
+.mature-modal p {
+    color: #888;
+    margin: 0 0 24px 0;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+.mature-modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.mature-modal-buttons button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cancel-btn {
+    background: transparent;
+    color: #888;
+    border: 1px solid #333 !important;
+}
+
+.cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.continue-btn {
+    background: #FF4444;
+    color: white;
+}
+
+.continue-btn:hover {
+    background: #ff5555;
+    transform: translateY(-1px);
+}
+
+.continue-btn:active {
+    transform: translateY(0);
+}
+  

@@ -386,4 +386,144 @@
     .video-info h4 {
         font-size: 0.9rem;
     }
+}
+
+.mature-warning {
+    position: relative;
+}
+
+.mature-warning video {
+    filter: blur(8px);
+}
+
+.mature-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 6px 12px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 2;
+    color: #FF4444;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.mature-count {
+    color: white;
+    opacity: 0.9;
+}
+
+.mature-warning .video-info h4 {
+    color: #FF4444;
+}
+
+/* Remove old warning styles */
+.warning-overlay,
+.warning-icon,
+.watch-anyway-btn {
+    display: none;
+}
+
+.mature-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.mature-modal.active {
+    opacity: 1;
+}
+
+.mature-modal-content {
+    background: #1a1a1a;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 16px;
+    padding: 24px;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    border: 1px solid #333;
+}
+
+.mature-modal.active .mature-modal-content {
+    transform: scale(1);
+}
+
+.mature-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mature-warning-icon {
+    font-size: 24px;
+}
+
+.mature-modal-header h3 {
+    margin: 0;
+    color: #FF4444;
+    font-size: 1.2rem;
+}
+
+.mature-modal p {
+    color: #888;
+    margin: 0 0 24px 0;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+.mature-modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.mature-modal-buttons button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cancel-btn {
+    background: transparent;
+    color: #888;
+    border: 1px solid #333 !important;
+}
+
+.cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+
+.continue-btn {
+    background: #FF4444;
+    color: white;
+}
+
+.continue-btn:hover {
+    background: #ff5555;
+    transform: translateY(-1px);
+}
+
+.continue-btn:active {
+    transform: translateY(0);
 } 

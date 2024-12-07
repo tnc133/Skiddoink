@@ -183,18 +183,43 @@ class SearchPage {
                     </div>
                     <div class="videos-section">
                         <div class="videos-grid">
-                            ${videosToShow.map(video => `
-                                <div class="video-result" onclick="searchPage.goToVideo('${video.id}')">
-                                    <div class="video-thumbnail">
-                                        <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
-                                        <div class="video-likes">❤️ ${video.likes || 0}</div>
-                                        <div class="video-info">
-                                            <h4>${video.title || 'Untitled Video'}</h4>
-                                            <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                            ${videosToShow.map(video => {
+                                const videoResult = document.createElement('div');
+                                videoResult.className = 'video-result';
+                                
+                                // Add mature content warning overlay if needed
+                                if (video.matureContent && localStorage.getItem('showMatureContent') !== 'true') {
+                                    videoResult.innerHTML = `
+                                        <div class="video-thumbnail mature-warning" onclick="searchPage.handleMatureVideo('${video.id}')">
+                                            <div class="mature-badge">
+                                                <span>Mature❤️</span>
+                                                <span class="mature-count">${video.likes || 0}</span>
+                                            </div>
+                                            <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
+                                            <div class="video-info">
+                                                <h4>MATURE VIDEO...</h4>
+                                                <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-                            `).join('')}
+                                    `;
+                                } else {
+                                    // Normal video display (existing code)
+                                    videoResult.innerHTML = `
+                                        <div class="video-thumbnail" onclick="searchPage.goToVideo('${video.id}')">
+                                            <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
+                                            <div class="video-likes">❤️ ${video.likes || 0}</div>
+                                            <div class="video-info">
+                                                <h4>${video.title || 'Untitled Video'}</h4>
+                                                <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                console.log('Video data:', video);  // Add this to see what data we have
+
+                                return videoResult.outerHTML;
+                            }).join('')}
                         </div>
                         ${this.currentVideos.length > videosToShow.length ? `
                             <div class="show-more-container">
@@ -226,20 +251,66 @@ class SearchPage {
         });
     }
 
-    goToVideo(videoId) {
-        // Clear viewingUserVideos if we're currently viewing someone's videos
-        if (localStorage.getItem('viewingUserVideos')) {
-            localStorage.removeItem('viewingUserVideos');
-        }
+    goToVideo(videoId, isMatureOverride = false) {
+        // Make sure we preserve the exact video ID
+        const cleanVideoId = videoId.replace(/[^-a-zA-Z0-9_]/g, '');  // Remove any invalid characters
+        console.log('Setting video ID:', cleanVideoId);
         
-        localStorage.setItem('activeVideoId', videoId);
+        // Clear any existing viewing state
+        localStorage.removeItem('viewingUserVideos');
+        
+        // Set the video to view
+        localStorage.setItem('activeVideoId', videoId);  // Use original videoId, not cleaned
         localStorage.setItem('scrollToVideo', 'true');
+        
+        // Navigate to index
         window.location.href = './index.html';
     }
 
     decodeUsername(username) {
         // Implement your decoding logic here
         return username;
+    }
+
+    handleMatureVideo(videoId) {
+        const modal = document.createElement('div');
+        modal.className = 'mature-modal';
+        modal.innerHTML = `
+            <div class="mature-modal-content">
+                <div class="mature-modal-header">
+                    <span class="mature-warning-icon">⚠️</span>
+                    <h3>Mature Content Warning</h3>
+                </div>
+                <p>This video may contain mild swearing, violence, or mature themes.</p>
+                <div class="mature-modal-buttons">
+                    <button class="cancel-btn">Cancel</button>
+                    <button class="continue-btn">Continue</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        requestAnimationFrame(() => modal.classList.add('active'));
+
+        // Handle button clicks
+        const continueBtn = modal.querySelector('.continue-btn');
+        const cancelBtn = modal.querySelector('.cancel-btn');
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => modal.remove(), 300);
+        };
+
+        continueBtn.addEventListener('click', () => {
+            closeModal();
+            this.goToVideo(videoId, true);
+        });
+
+        cancelBtn.addEventListener('click', closeModal);
+
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
     }
 }
 

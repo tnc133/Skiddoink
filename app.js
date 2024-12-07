@@ -263,6 +263,26 @@ class SkiddoinkApp {
     }
 
     displayVideos(videos) {
+        // Declare these variables once at the top
+        const activeVideoId = localStorage.getItem('activeVideoId');
+        const shouldScrollToVideo = localStorage.getItem('scrollToVideo');
+        
+        console.log('Initial videos array:', videos);
+
+        // Before any filtering
+        if (Array.isArray(videos)) {
+            console.log('Videos is an array');
+        } else {
+            console.log('Videos is an object:', Object.keys(videos));
+            // Convert to array if it's an object
+            videos = Object.entries(videos).map(([id, video]) => ({
+                ...video,
+                id  // Make sure ID is included
+            }));
+        }
+
+        console.log('After conversion:', videos); // Debug converted data
+
         this.allVideos = videos;
         this.feed.innerHTML = '';
         
@@ -272,7 +292,20 @@ class SkiddoinkApp {
         
         if (viewingUser) {
             // Filter videos to show only the user's videos
-            videos = videos.filter(video => video.publisher === viewingUser);
+            videos = videos.filter(video => {
+                // First filter by publisher
+                if (video.publisher !== viewingUser) return false;
+                
+                // Then check mature content unless it's the specific video we clicked
+                const showMatureContent = localStorage.getItem('showMatureContent') === 'true';
+                const isActiveVideo = video.id === activeVideoId;
+                
+                if (video.matureContent && !showMatureContent && !isActiveVideo) {
+                    return false;
+                }
+                
+                return true;
+            });
             
             // Add a header to show whose videos we're viewing
             const header = document.createElement('div');
@@ -289,9 +322,32 @@ class SkiddoinkApp {
                 window.location.reload();
             });
         } else {
-            // If on main feed, filter out the current user's videos
-            videos = videos.filter(video => video.publisher !== currentUser);
+            const showMatureContent = localStorage.getItem('showMatureContent') === 'true';
+            
+            console.log('Before filtering, total videos:', videos.length);
+            
+            videos = videos.filter(video => {
+                // Always show the video we're trying to navigate to
+                if (video.id === activeVideoId) {
+                    console.log('Keeping active video:', video.id);
+                    return true;
+                }
+
+                // Normal mature content filtering
+                const shouldShow = showMatureContent || !video.matureContent;
+                if (!shouldShow) {
+                    console.log('Filtered out video:', video.id);
+                }
+                return shouldShow;
+            });
+
+            // Only filter out current user's videos if not coming from search
+            if (!shouldScrollToVideo) {
+                videos = videos.filter(video => video.publisher !== currentUser);
+            }
         }
+
+        console.log('After filtering, total videos:', videos.length);
 
         if (!videos || videos.length === 0) {
             const noVideos = document.createElement('div');
@@ -303,23 +359,24 @@ class SkiddoinkApp {
             return;
         }
 
-        // Get the active video ID if any
-        const activeVideoId = localStorage.getItem('activeVideoId');
-        const shouldScrollToVideo = localStorage.getItem('scrollToVideo');
-
+        // Remove the second declarations and just use the if statement
         if (activeVideoId && shouldScrollToVideo) {
+            console.log('Looking for video:', activeVideoId);
             // Find the active video
             const activeVideo = videos.find(v => v.id === activeVideoId);
+            
             if (activeVideo) {
-                // Put the active video first
                 this.sortedVideos = [
                     activeVideo,
                     ...videos.filter(v => v.id !== activeVideoId)
                 ];
             } else {
-                this.sortedVideos = [...videos];
+                alert('Video not found');
+                localStorage.removeItem('activeVideoId');
+                localStorage.removeItem('scrollToVideo');
+                window.history.back();
+                return;
             }
-            // Clear the scroll flag
             localStorage.removeItem('scrollToVideo');
         } else {
             // Normal video sorting logic

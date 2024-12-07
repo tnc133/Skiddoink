@@ -370,6 +370,18 @@ class ProfilePage {
                 document.querySelector(`.settings-section[data-section="${tab.dataset.tab}"]`).classList.add('active');
             });
         });
+
+        const matureToggle = document.getElementById('showMatureContent');
+        if (matureToggle) {
+            // Set initial state
+            matureToggle.checked = localStorage.getItem('showMatureContent') === 'true';
+            
+            matureToggle.addEventListener('change', async () => {
+                localStorage.setItem('showMatureContent', matureToggle.checked);
+                // Reload videos to apply filter
+                this.loadUserVideos();
+            });
+        }
     }
 
     async loadUserVideos() {
@@ -389,7 +401,7 @@ class ProfilePage {
                 return;
             }
             
-            // Store videos for sorting
+            // Remove the mature content filter - just convert to array with IDs
             this.currentVideos = Object.entries(videos).map(([id, video]) => ({
                 ...video,
                 id,
@@ -419,88 +431,441 @@ class ProfilePage {
             const thumbnail = document.createElement('div');
             thumbnail.className = 'video-thumbnail';
             
-            const videoElement = document.createElement('video');
-            videoElement.src = video.url;
-            videoElement.muted = true;  // Always muted
-            videoElement.playsInline = true;  // Add this for better mobile behavior
-            videoElement.loop = true;  // Add this to loop the preview
-            
-            const videoInfo = document.createElement('div');
-            videoInfo.className = 'video-info';
-            videoInfo.innerHTML = `
-                <h4>${video.title || 'Untitled Video'}</h4>
-                <p>@${video.publisher || '[Deleted User]'}</p>
-            `;
+            // Check if video is mature and user has mature content disabled
+            if (video.matureContent && localStorage.getItem('showMatureContent') !== 'true') {
+                thumbnail.innerHTML = `
+                    <div class="mature-warning">
+                        <div class="mature-badge">
+                            <span>Mature❤️</span>
+                            <span class="mature-count">${video.likes || 0}</span>
+                        </div>
+                        <video src="${video.url}" muted loop playsinline></video>
+                        <div class="video-info">
+                            <h4>MATURE VIDEO...</h4>
+                            <p>@${video.publisher || '[Deleted User]'}</p>
+                        </div>
+                    </div>
+                `;
 
-            const likesCounter = document.createElement('div');
-            likesCounter.className = 'video-likes';
-            likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
+                // Add click handler for mature warning
+                thumbnail.addEventListener('click', () => {
+                    const modal = document.createElement('div');
+                    modal.className = 'mature-modal';
+                    modal.innerHTML = `
+                        <div class="mature-modal-content">
+                            <div class="mature-modal-header">
+                                <span class="mature-warning-icon">⚠️</span>
+                                <h3>Mature Content Warning</h3>
+                            </div>
+                            <p>This video may contain mild swearing, violence, or mature themes.</p>
+                            <div class="mature-modal-buttons">
+                                <button class="cancel-btn">Cancel</button>
+                                <button class="continue-btn">Continue</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(modal);
+                    requestAnimationFrame(() => modal.classList.add('active'));
 
-            thumbnail.appendChild(videoElement);
-            thumbnail.appendChild(videoInfo);
-            thumbnail.appendChild(likesCounter);
+                    // Handle button clicks
+                    const continueBtn = modal.querySelector('.continue-btn');
+                    const cancelBtn = modal.querySelector('.cancel-btn');
+                    const closeModal = () => {
+                        modal.classList.remove('active');
+                        setTimeout(() => modal.remove(), 300);
+                    };
+
+                    continueBtn.addEventListener('click', () => {
+                        closeModal();
+                        localStorage.setItem('activeVideoId', video.id);
+                        localStorage.setItem('scrollToVideo', 'true');
+                        localStorage.setItem('viewingUserVideos', this.username);
+                        window.location.href = './index.html';
+                    });
+
+                    cancelBtn.addEventListener('click', closeModal);
+
+                    // Close on background click
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) closeModal();
+                    });
+                });
+            } else {
+                // Normal video display (existing code)
+                const videoElement = document.createElement('video');
+                videoElement.src = video.url;
+                videoElement.muted = true;
+                videoElement.playsInline = true;
+                videoElement.loop = true;
+                
+                const videoInfo = document.createElement('div');
+                videoInfo.className = 'video-info';
+                videoInfo.innerHTML = `
+                    <h4>${video.title || 'Untitled Video'}</h4>
+                    <p>@${video.publisher || '[Deleted User]'}</p>
+                `;
+
+                const likesCounter = document.createElement('div');
+                likesCounter.className = 'video-likes';
+                likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
+
+                thumbnail.appendChild(videoElement);
+                thumbnail.appendChild(videoInfo);
+                thumbnail.appendChild(likesCounter);
+                
+                // Existing hover and click handlers
+                thumbnail.addEventListener('mouseenter', () => {
+                    videoElement.play().catch(console.error);
+                });
+                thumbnail.addEventListener('mouseleave', () => {
+                    videoElement.pause();
+                    videoElement.currentTime = 0;
+                });
+                
+                thumbnail.addEventListener('click', () => {
+                    localStorage.setItem('activeVideoId', video.id);
+                    localStorage.setItem('scrollToVideo', 'true');
+                    localStorage.setItem('viewingUserVideos', this.username);
+                    window.location.href = './index.html';
+                });
+            }
             
             videosGrid.appendChild(thumbnail);
-            
-            // Play preview on hover
-            thumbnail.addEventListener('mouseenter', () => {
-                videoElement.muted = true;  // Ensure video is muted
-                videoElement.play();
-            });
-            thumbnail.addEventListener('mouseleave', () => {
-                videoElement.pause();
-                videoElement.currentTime = 0;
-            });
-            
-            // Go to main feed and play this video when clicked
-            thumbnail.addEventListener('click', () => {
-                localStorage.setItem('activeVideoId', video.id);
-                localStorage.setItem('scrollToVideo', 'true');
-                localStorage.setItem('viewingUserVideos', this.username);
-                window.location.href = './index.html';
-            });
         });
     }
 
     handleUpload() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'video/*';
-        input.click();
+        const uploadModal = document.createElement('div');
+        uploadModal.className = 'settings-modal';  // Reuse settings modal styles
+        uploadModal.innerHTML = `
+            <div class="settings-content upload-content">
+                <div class="settings-header">
+                    <h3>Upload Video</h3>
+                    <button class="close-settings">×</button>
+                </div>
+                
+                <div class="upload-sections">
+                    <div class="upload-preview">
+                        <div class="video-preview-container">
+                            <div class="video-placeholder">
+                                <span>📁</span>
+                                <p>No video selected</p>
+                                <button class="settings-button select-video-btn">Select Video</button>
+                            </div>
+                            <video style="display: none" controls></video>
+                        </div>
+                    </div>
+
+                    <div class="upload-details">
+                        <div class="settings-input-group">
+                            <h4>Details</h4>
+                            <input type="text" 
+                                   class="settings-input" 
+                                   id="videoTitle" 
+                                   placeholder="Title (required)"
+                                   maxlength="75">
+                            <div class="char-count">0/75</div>
+                            
+                            <textarea class="settings-input" 
+                                      id="videoDescription" 
+                                      placeholder="Description (optional)"
+                                      maxlength="150"
+                                      rows="4"></textarea>
+                            <div class="char-count">0/150</div>
+
+                            <div class="mature-content-toggle">
+                                <label class="toggle-container">
+                                    <input type="checkbox" id="matureContent">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="toggle-label">
+                                    <span>Mature Content</span>
+                                    <p class="toggle-description">Enable if video contains mild swearing, violence, or mature themes</p>
+                                </div>
+                            </div>
+
+                            <div class="upload-status" style="display: none;">
+                                <div class="upload-progress">
+                                    <div class="progress-bar"></div>
+                                </div>
+                                <p class="upload-message">Uploading video...</p>
+                            </div>
+                            
+                            <button class="settings-button publish-btn" disabled>Publish</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(uploadModal);
+
+        // Add styles for new upload UI
+        const style = document.createElement('style');
+        style.textContent = `
+            .upload-content {
+                max-width: 800px !important;
+            }
+            
+            .upload-sections {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                padding: 20px;
+                height: calc(100% - 52px);
+                overflow-y: auto;
+            }
+            
+            .video-preview-container {
+                aspect-ratio: 9/16;
+                background: #000;
+                border-radius: 8px;
+                overflow: hidden;
+                margin-bottom: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .video-placeholder {
+                text-align: center;
+                color: #666;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            
+            .video-placeholder span {
+                font-size: 48px;
+                margin-bottom: 4px;
+            }
+
+            .video-placeholder p {
+                margin: 0;
+            }
+            
+            .video-placeholder .select-video-btn {
+                margin: 0;
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+            
+            .video-preview-container video {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                background: #000;
+            }
+            
+            .upload-details {
+                padding-right: 20px;
+            }
+            
+            .char-count {
+                text-align: right;
+                font-size: 12px;
+                color: #666;
+                margin-top: -8px;
+                margin-bottom: 16px;
+            }
+            
+            .upload-progress {
+                height: 4px;
+                background: #333;
+                border-radius: 2px;
+                margin: 16px 0;
+                overflow: hidden;
+            }
+            
+            .progress-bar {
+                height: 100%;
+                background: #FF4444;
+                width: 0%;
+                transition: width 0.3s ease;
+            }
+            
+            .upload-message {
+                text-align: center;
+                color: #666;
+                margin: 8px 0;
+            }
+            
+            textarea.settings-input {
+                resize: vertical;
+                min-height: 100px;
+            }
+            
+            @media (max-width: 768px) {
+                .upload-sections {
+                    grid-template-columns: 1fr;
+                }
+                
+                .upload-details {
+                    padding-right: 0;
+                }
+            }
+
+            .mature-content-toggle {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                margin: 16px 0;
+                padding: 12px;
+                background: rgba(255, 68, 68, 0.1);
+                border-radius: 8px;
+            }
+
+            .toggle-container {
+                position: relative;
+                display: inline-block;
+                width: 44px;
+                height: 24px;
+                flex-shrink: 0;
+            }
+
+            .toggle-container input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+
+            .toggle-slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: #333;
+                transition: .4s;
+                border-radius: 24px;
+            }
+
+            .toggle-slider:before {
+                position: absolute;
+                content: "";
+                height: 18px;
+                width: 18px;
+                left: 3px;
+                bottom: 3px;
+                background-color: white;
+                transition: .4s;
+                border-radius: 50%;
+            }
+
+            input:checked + .toggle-slider {
+                background-color: #FF4444;
+            }
+
+            input:checked + .toggle-slider:before {
+                transform: translateX(20px);
+            }
+
+            .toggle-label {
+                flex: 1;
+            }
+
+            .toggle-label span {
+                display: block;
+                font-weight: 500;
+                margin-bottom: 4px;
+            }
+
+            .toggle-description {
+                font-size: 0.9rem;
+                color: #666;
+                margin: 0;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Handle close button
+        const closeBtn = uploadModal.querySelector('.close-settings');
+        closeBtn.addEventListener('click', () => {
+            document.body.removeChild(uploadModal);
+        });
+
+        // Handle file selection
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'video/*';
         
-        input.onchange = async (e) => {
+        const selectBtn = uploadModal.querySelector('.select-video-btn');
+        const videoPreview = uploadModal.querySelector('video');
+        const placeholder = uploadModal.querySelector('.video-placeholder');
+        const publishBtn = uploadModal.querySelector('.publish-btn');
+        const titleInput = uploadModal.querySelector('#videoTitle');
+        const descInput = uploadModal.querySelector('#videoDescription');
+        
+        selectBtn.addEventListener('click', () => fileInput.click());
+
+        // Update character counts
+        titleInput.addEventListener('input', () => {
+            const count = titleInput.value.length;
+            titleInput.nextElementSibling.textContent = `${count}/75`;
+            updatePublishButton();
+        });
+
+        descInput.addEventListener('input', () => {
+            const count = descInput.value.length;
+            descInput.nextElementSibling.textContent = `${count}/150`;
+        });
+
+        // Enable/disable publish button
+        const updatePublishButton = () => {
+            publishBtn.disabled = !titleInput.value.trim() || !fileInput.files[0];
+        };
+
+        fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (!file) return;
+            if (file) {
+                videoPreview.src = URL.createObjectURL(file);
+                videoPreview.style.display = 'block';
+                placeholder.style.display = 'none';
+                updatePublishButton();
+            }
+        });
+
+        // Handle publish
+        publishBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            const title = titleInput.value.trim();
+            const description = descInput.value.trim();
+            const matureContent = uploadModal.querySelector('#matureContent').checked;
+
+            if (!file || !title) return;
+
+            const uploadStatus = uploadModal.querySelector('.upload-status');
+            const progressBar = uploadModal.querySelector('.progress-bar');
+            const uploadMessage = uploadModal.querySelector('.upload-message');
+            
+            uploadStatus.style.display = 'block';
+            publishBtn.disabled = true;
 
             try {
-                const loadingOverlay = document.createElement('div');
-                loadingOverlay.className = 'loading-overlay';
-                loadingOverlay.innerHTML = `
-                    <div class="loading-spinner"></div>
-                    <p>Uploading video...</p>
-                `;
-                document.body.appendChild(loadingOverlay);
-
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('upload_preset', 'skiddoink_uploads');
-                formData.append('api_key', '255245241992774');
-                formData.append('timestamp', Math.round(Date.now() / 1000));
                 formData.append('cloud_name', 'dz8kxt0gy');
-                
-                const uploadUrl = 'https://api.cloudinary.com/v1_1/dz8kxt0gy/video/upload';
-                
+
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', uploadUrl);
+                xhr.open('POST', 'https://api.cloudinary.com/v1_1/dz8kxt0gy/video/upload');
                 
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const percent = (e.loaded / e.total) * 100;
+                        progressBar.style.width = percent + '%';
+                        uploadMessage.textContent = `Uploading: ${Math.round(percent)}%`;
+                    }
+                };
+
                 xhr.onload = async () => {
                     if (xhr.status === 200) {
                         const data = JSON.parse(xhr.responseText);
                         
-                        const title = prompt('Enter a title for your video:', '') || 'Untitled Video';
-                        const description = prompt('Enter a description (optional):', '');
-
-                        // Get current user's profile picture from Firebase
+                        // Get current user's profile picture
                         const userId = localStorage.getItem('userId');
                         const userSnapshot = await this.database.ref(`users/${userId}`).once('value');
                         const userData = userSnapshot.val();
@@ -515,36 +880,31 @@ class ProfilePage {
                             views: 0,
                             likes: 0,
                             publisher: this.username,
-                            publisherPic: profilePic  // Use the profile picture from Firebase
+                            publisherPic: profilePic,
+                            matureContent: matureContent
                         };
 
-                        const newVideoRef = this.videosRef.push();
-                        await newVideoRef.set(videoData);
-
-                        this.loadUserVideos(); // Reload videos after upload
-                        alert('Video added successfully!');
-                    } else {
-                        throw new Error('Upload failed');
+                        await this.videosRef.push(videoData);
+                        
+                        document.body.removeChild(uploadModal);
+                        this.loadUserVideos();
+                        alert('Video uploaded successfully!');
                     }
-                    document.body.removeChild(loadingOverlay);
                 };
                 
                 xhr.onerror = () => {
-                    console.error('Error:', xhr.statusText);
-                    alert('Upload failed');
-                    document.body.removeChild(loadingOverlay);
+                    uploadMessage.textContent = 'Upload failed';
+                    publishBtn.disabled = false;
                 };
                 
                 xhr.send(formData);
 
             } catch (error) {
                 console.error('Error:', error);
-                alert(`Upload failed: ${error.message}`);
-                if (document.body.querySelector('.loading-overlay')) {
-                    document.body.removeChild(document.body.querySelector('.loading-overlay'));
-                }
+                uploadMessage.textContent = 'Upload failed';
+                publishBtn.disabled = false;
             }
-        };
+        });
     }
 
     async handleProfilePicUpload() {
