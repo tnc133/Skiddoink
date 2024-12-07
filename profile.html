@@ -69,28 +69,68 @@
             <!-- Settings Modal -->
             <div class="settings-modal" style="display: none;">
                 <div class="settings-content">
-                    <h3>Settings</h3>
-                    <div class="settings-section">
-                        <h4>Profile Picture</h4>
-                        <button id="changeProfilePic">Change Profile Picture</button>
+                    <div class="settings-header">
+                        <h3>Settings</h3>
+                        <button class="close-settings">×</button>
                     </div>
-                    <div class="settings-section">
-                        <h4>Change Password</h4>
-                        <input type="password" id="currentPassword" placeholder="Current Password">
-                        <input type="password" id="newPassword" placeholder="New Password">
-                        <input type="password" id="confirmPassword" placeholder="Confirm New Password">
-                        <button id="updatePassword">Update Password</button>
-                        <p class="settings-error"></p>
+                    
+                    <div class="settings-tabs">
+                        <button class="settings-tab active" data-tab="profile">Profile</button>
+                        <button class="settings-tab" data-tab="account">Account</button>
+                        <button class="settings-tab" data-tab="privacy">Privacy</button>
                     </div>
-                    <div class="settings-section">
-                        <h4>Delete Account</h4>
-                        <p class="delete-warning">⚠️ This action cannot be undone. All your videos and data will be permanently deleted.</p>
-                        <input type="password" id="deleteAccountPassword" placeholder="Enter password to confirm">
-                        <button id="deleteAccountBtn" class="delete-account-btn">Delete Account</button>
-                        <p class="delete-error"></p>
+                    
+                    <div class="settings-sections">
+                        <!-- Profile Section -->
+                        <div class="settings-section active" data-section="profile">
+                            <div class="settings-input-group">
+                                <h4>Profile Picture</h4>
+                                <button id="changeProfilePic" class="settings-button">Change Profile Picture</button>
+                            </div>
+                            
+                            <div class="settings-divider"></div>
+                            
+                            <div class="settings-input-group">
+                                <h4>Change Username</h4>
+                                <input type="text" id="newUsername" class="settings-input" placeholder="New username">
+                                <p class="username-error settings-error"></p>
+                                <button id="updateUsername" class="settings-button">Update Username</button>
+                                <p class="settings-description">You can only change your username once every hour</p>
+                            </div>
+                        </div>
+
+                        <!-- Account Section -->
+                        <div class="settings-section" data-section="account">
+                            <div class="settings-input-group">
+                                <h4>Change Password</h4>
+                                <input type="password" id="currentPassword" class="settings-input" placeholder="Current Password">
+                                <input type="password" id="newPassword" class="settings-input" placeholder="New Password">
+                                <input type="password" id="confirmPassword" class="settings-input" placeholder="Confirm New Password">
+                                <p class="settings-error"></p>
+                                <button id="updatePassword" class="settings-button">Update Password</button>
+                            </div>
+
+                            <div class="settings-divider"></div>
+
+                            <div class="settings-input-group">
+                                <h4>Account Actions</h4>
+                                <button id="signoutBtn" class="settings-button">Sign Out</button>
+                                <div style="margin-top: 16px;">
+                                    <input type="password" id="deleteAccountPassword" class="settings-input" placeholder="Enter password to confirm deletion">
+                                    <p class="delete-error"></p>
+                                    <button id="deleteAccountBtn" class="settings-button danger">Delete Account</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Privacy Section -->
+                        <div class="settings-section" data-section="privacy">
+                            <div class="settings-input-group">
+                                <h4>Privacy Settings</h4>
+                                <p class="settings-description">Privacy settings coming soon...</p>
+                            </div>
+                        </div>
                     </div>
-                    <button id="signoutBtn" class="signout-btn">Sign Out</button>
-                    <button class="close-settings">Close</button>
                 </div>
             </div>
         </div>

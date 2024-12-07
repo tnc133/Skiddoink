@@ -32,13 +32,13 @@ body {
     top: 0;
     left: 0;
     width: 100%;
-    padding: 1rem;
+    height: 60px;
+    padding: 0 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: transparent;
     z-index: 100;
-    gap: 16px;
 }
 
 #uploadBtn {
@@ -198,55 +198,114 @@ video {
 .interaction-buttons {
     position: absolute;
     right: 20px;
-    bottom: 120px;
+    bottom: 220px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 32px;
     z-index: 3;
 }
 
 .interaction-btn {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(22, 24, 35, 0.6);
     border: none;
     color: white;
-    font-size: 2rem;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 8px;
-    border-radius: 50%;
-    width: 52px;
-    height: 52px;
     justify-content: center;
+    font-size: 1.8rem;
+    position: relative;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    transition: transform 0.2s, background 0.2s;
-}
-
-.interaction-btn:hover {
-    transform: scale(1.1);
-    background: rgba(0, 0, 0, 0.6);
 }
 
 .interaction-btn span {
-    font-size: 0.75rem;
-    margin-top: 6px;
-    font-weight: 500;
     position: absolute;
-    bottom: -24px;
+    bottom: -32px;
     left: 50%;
     transform: translateX(-50%);
+    font-size: 1rem;
+    font-weight: 600;
     white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .like-btn.liked {
-    color: #ff4444;
-    text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+    background: rgba(254, 44, 85, 0.1);
+    color: #fe2c55;
+}
+
+.like-btn.liked:hover {
+    background: rgba(254, 44, 85, 0.2);
+}
+
+.like-btn {
+    transform: translateY(-20px);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.like-btn:hover {
+    transform: translateY(-20px) scale(1.1);
+    background: rgba(22, 24, 35, 0.8);
 }
 
 .like-btn:active {
-    transform: scale(0.9);
+    transform: translateY(-20px) scale(0.9);
+}
+
+@keyframes likePulse {
+    0% { transform: translateY(-20px) scale(1); }
+    50% { transform: translateY(-20px) scale(1.2); }
+    100% { transform: translateY(-20px) scale(1); }
+}
+
+.like-btn.liked {
+    animation: likePulse 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 767px) {
+    .interaction-buttons {
+        right: 16px;
+        bottom: 200px;
+        gap: 36px;
+    }
+
+    .interaction-btn {
+        width: 56px;
+        height: 56px;
+        font-size: 1.6rem;
+    }
+
+    .interaction-btn span {
+        font-size: 0.9rem;
+        bottom: -28px;
+    }
+
+    .like-btn {
+        transform: translateY(-16px);
+    }
+    
+    .like-btn:hover {
+        transform: translateY(-16px) scale(1.1);
+    }
+    
+    .like-btn:active {
+        transform: translateY(-16px) scale(0.9);
+    }
+    
+    @keyframes likePulse {
+        0% { transform: translateY(-16px) scale(1); }
+        50% { transform: translateY(-16px) scale(1.2); }
+        100% { transform: translateY(-16px) scale(1); }
+    }
 }
 
 .loading-overlay {
@@ -334,12 +393,25 @@ video {
     bottom: 20px;
     right: 20px;
     color: white;
-    font-size: 1.2rem;
-    font-weight: 700;
-    opacity: 0.85;
+    font-size: 1.1rem;
+    font-weight: 500;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    letter-spacing: 0.5px;
+    text-decoration: none;
+    background: rgba(22, 24, 35, 0.6);
+    padding: 12px 24px;
+    border-radius: 92px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 99;
+}
+
+.username-display:hover {
+    background: rgba(22, 24, 35, 0.8);
+    transform: scale(1.05);
 }
 
 .auth-tabs {
@@ -652,23 +724,41 @@ video {
 
 .search-button {
     position: absolute;
-    right: 1rem;
-    background: rgba(22, 24, 35, 0.7);
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.1);
     border: none;
     border-radius: 92px;
     padding: 8px 16px;
-    color: white;
+    color: rgba(255, 255, 255, 0.9);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    font-size: 1.1rem;
+    transition: all 0.2s ease;
 }
 
 .search-button span {
     font-size: 0.9rem;
-    opacity: 0.9;
+    font-weight: 400;
+}
+
+.search-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 767px) {
+    .search-button {
+        padding: 6px 12px;
+        right: 12px;
+    }
+    
+    .search-button span {
+        font-size: 0.85rem;
+    }
 }
 
 .search-modal {
@@ -962,14 +1052,20 @@ h1 {
     }
 
     .interaction-buttons {
-        right: 8px;
-        bottom: 100px;
+        right: 4px;
+        bottom: 80px;
+        gap: 16px;
     }
 
     .interaction-btn {
         width: 40px;
         height: 40px;
-        font-size: 1.5rem;
+        font-size: 1.1rem;
+    }
+
+    .interaction-btn span {
+        font-size: 0.7rem;
+        bottom: -18px;
     }
 }
 
@@ -1035,5 +1131,185 @@ h1 {
 
 .feed:has(.user-videos-header) {
     padding-top: 120px;
+}
+
+/* Add hover effect for comment button */
+.comment-btn:hover {
+    transform: scale(1.1);
+    background: rgba(22, 24, 35, 0.8);
+}
+
+/* Add active state for comment button */
+.comment-btn:active {
+    transform: scale(0.9);
+}
+
+/* Add the same transition to comment button */
+.comment-btn {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 767px) {
+    .username-display {
+        font-size: 1rem;
+        padding: 10px 20px;
+        right: 16px;
+        bottom: 16px;
+    }
+}
+
+/* Settings Modal Styles */
+.settings-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.settings-content {
+    background: #000;
+    width: 100%;
+    max-width: 400px;
+    height: 600px;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-header {
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    position: relative;
+    height: 52px;
+}
+
+.settings-header h3 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.close-settings {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    padding: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.close-settings:hover {
+    opacity: 1;
+}
+
+.settings-tabs {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: #000;
+}
+
+.settings-tab {
+    padding: 16px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 1px solid #222;
+}
+
+.settings-tab.active {
+    color: #fff;
+    background: #111;
+}
+
+.settings-sections {
+    flex: 1;
+    overflow-y: auto;
+    background: #111;
+}
+
+.settings-section {
+    display: none;
+    padding: 16px;
+}
+
+.settings-section.active {
+    display: block;
+}
+
+.settings-section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 16px;
+}
+
+.settings-input {
+    width: 100%;
+    padding: 12px;
+    background: #000;
+    border: 1px solid #333;
+    border-radius: 2px;
+    color: white;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.settings-button {
+    width: 100%;
+    padding: 12px;
+    background: #ff2b2b;
+    border: none;
+    border-radius: 2px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 12px;
+}
+
+.settings-button.danger {
+    background: transparent;
+    border: 1px solid #ff2b2b;
+    color: #ff2b2b;
+}
+
+.settings-divider {
+    height: 1px;
+    background: #222;
+    margin: 16px 0;
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 767px) {
+    .settings-content {
+        height: 100%;
+        border-radius: 0;
+    }
 }
 

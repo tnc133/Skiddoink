@@ -78,6 +78,8 @@ class ProfilePage {
                 }
             }
         });
+
+        this.setupUsernameChange();
     }
 
     async loadUserData() {
@@ -115,12 +117,24 @@ class ProfilePage {
                     profilePicElement.src = window.DEFAULT_AVATAR;
                 }
             }
+
+            // When displaying username, decode it
+            document.querySelector('.profile-username').textContent = 
+                `@${this.decodeUsername(this.username)}`;
             
+            // Update section title with decoded username
+            const sectionTitle = document.querySelector('.section-title');
+            if (sectionTitle) {
+                sectionTitle.textContent = isOwnProfile ? 
+                    'Your Videos' : 
+                    `${this.decodeUsername(this.username)}'s Videos`;
+            }
+
             // Use encoded username for Firebase lookup
             const followingRef = this.database.ref(`following/${encodedUsername}`);
             const followersRef = this.database.ref(`followers/${encodedUsername}`);
 
-            // Load follower and following counts
+            // Load follower and following counts with validation
             const [followersSnapshot, followingSnapshot] = await Promise.all([
                 followersRef.once('value'),
                 followingRef.once('value')
@@ -134,9 +148,12 @@ class ProfilePage {
                 await followingRef.child(encodedUsername).remove();
             }
 
-            // Recount after cleanup
-            const followerCount = Object.keys(followersSnapshot.val() || {}).filter(f => f !== encodedUsername).length;
-            const followingCount = Object.keys(followingSnapshot.val() || {}).filter(f => f !== encodedUsername).length;
+            // Validate and count actual followers/following
+            const validFollowers = await this.validateFollowList(followersSnapshot.val() || {});
+            const validFollowing = await this.validateFollowList(followingSnapshot.val() || {});
+
+            const followerCount = validFollowers.length;
+            const followingCount = validFollowing.length;
 
             // Calculate total likes from user's videos
             const videosSnapshot = await this.videosRef
@@ -184,15 +201,15 @@ class ProfilePage {
                 };
                 updateStats();
 
-                // Add real-time listeners for follower/following counts
-                this.database.ref(`followers/${encodedUsername}`).on('value', snapshot => {
-                    const newCount = Object.keys(snapshot.val() || {}).filter(f => f !== encodedUsername).length;
-                    statsContainer.querySelector('.followers-stat .stat-count').textContent = newCount;
+                // Add real-time listeners with validation
+                this.database.ref(`followers/${encodedUsername}`).on('value', async snapshot => {
+                    const validFollowers = await this.validateFollowList(snapshot.val() || {});
+                    statsContainer.querySelector('.followers-stat .stat-count').textContent = validFollowers.length;
                 });
 
-                this.database.ref(`following/${encodedUsername}`).on('value', snapshot => {
-                    const newCount = Object.keys(snapshot.val() || {}).filter(f => f !== encodedUsername).length;
-                    statsContainer.querySelector('.following-stat .stat-count').textContent = newCount;
+                this.database.ref(`following/${encodedUsername}`).on('value', async snapshot => {
+                    const validFollowing = await this.validateFollowList(snapshot.val() || {});
+                    statsContainer.querySelector('.following-stat .stat-count').textContent = validFollowing.length;
                 });
             }
             
@@ -226,10 +243,6 @@ class ProfilePage {
                 }
                 profileInfo.appendChild(followBtn);
             }
-
-            // When displaying username, decode it
-            document.querySelector('.profile-username').textContent = 
-                `@${this.decodeUsername(this.username)}`;
         } catch (error) {
             console.error('Error in loadUserData:', error);
         }
@@ -327,6 +340,18 @@ class ProfilePage {
             });
             document.body.appendChild(deleteUserBtn);
         }
+
+        document.querySelectorAll('.settings-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs and sections
+                document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding section
+                tab.classList.add('active');
+                document.querySelector(`.settings-section[data-section="${tab.dataset.tab}"]`).classList.add('active');
+            });
+        });
     }
 
     async loadUserVideos() {
@@ -1111,6 +1136,168 @@ class ProfilePage {
             }
         } catch (error) {
             console.error('Error during follow cleanup:', error);
+        }
+    }
+
+    async setupUsernameChange() {
+        const updateUsernameBtn = document.getElementById('updateUsername');
+        const newUsernameInput = document.getElementById('newUsername');
+        const errorDisplay = document.querySelector('.username-error');
+
+        if (updateUsernameBtn) {
+            updateUsernameBtn.addEventListener('click', async () => {
+                try {
+                    await this.handleUsernameChange();
+                } catch (error) {
+                    errorDisplay.textContent = error.message;
+                }
+            });
+        }
+    }
+
+    async handleUsernameChange() {
+        const newUsername = document.getElementById('newUsername').value.trim();
+        const errorDisplay = document.querySelector('.username-error');
+        const currentUsername = localStorage.getItem('username');
+        const userId = localStorage.getItem('userId');
+
+        // Username validation
+        const usernameRegex = /^[a-zA-Z0-9_.-]{3,20}$/;
+        if (!usernameRegex.test(newUsername)) {
+            throw new Error('Username must be 3-20 characters and can only contain letters, numbers, dots, dashes, and underscores');
+        }
+
+        try {
+            // Check if new username is different from current
+            if (newUsername === this.decodeUsername(currentUsername)) {
+                throw new Error('New username must be different from current username');
+            }
+
+            // Check if username exists
+            const encodedNewUsername = newUsername.replace(/\./g, '(');
+            const snapshot = await this.database.ref('users')
+                .orderByChild('username')
+                .equalTo(encodedNewUsername)
+                .once('value');
+            
+            if (snapshot.exists()) {
+                throw new Error('Username already exists');
+            }
+
+            // Check last username change time
+            const userSnapshot = await this.database.ref(`users/${userId}`).once('value');
+            const userData = userSnapshot.val();
+            const lastUsernameChange = userData.lastUsernameChange || 0;
+            const oneHour = 60 * 60 * 1000; // milliseconds
+
+            if (Date.now() - lastUsernameChange < oneHour) {
+                const minutesLeft = Math.ceil((oneHour - (Date.now() - lastUsernameChange)) / 60000);
+                throw new Error(`Please wait ${minutesLeft} minutes before changing username again`);
+            }
+
+            // Start username update process
+            const oldEncodedUsername = currentUsername;
+            const updates = {};
+
+            // Update user record
+            updates[`users/${userId}/username`] = encodedNewUsername;
+            updates[`users/${userId}/lastUsernameChange`] = Date.now();
+
+            // Update videos
+            const videosSnapshot = await this.videosRef
+                .orderByChild('publisher')
+                .equalTo(currentUsername)
+                .once('value');
+            
+            if (videosSnapshot.exists()) {
+                videosSnapshot.forEach(child => {
+                    updates[`videos/${child.key}/publisher`] = encodedNewUsername;
+                });
+            }
+
+            // Update comments
+            const commentsSnapshot = await this.commentsRef
+                .orderByChild('username')
+                .equalTo(currentUsername)
+                .once('value');
+            
+            if (commentsSnapshot.exists()) {
+                commentsSnapshot.forEach(child => {
+                    updates[`comments/${child.key}/username`] = encodedNewUsername;
+                });
+            }
+
+            // Update following/followers structure
+            const followingSnapshot = await this.database.ref(`following/${oldEncodedUsername}`).once('value');
+            const followersSnapshot = await this.database.ref(`followers/${oldEncodedUsername}`).once('value');
+
+            if (followingSnapshot.exists()) {
+                updates[`following/${encodedNewUsername}`] = followingSnapshot.val();
+                updates[`following/${oldEncodedUsername}`] = null;
+            }
+
+            if (followersSnapshot.exists()) {
+                updates[`followers/${encodedNewUsername}`] = followersSnapshot.val();
+                updates[`followers/${oldEncodedUsername}`] = null;
+            }
+
+            // Update likes
+            const userLikesSnapshot = await this.database.ref(`userLikes/${oldEncodedUsername}`).once('value');
+            if (userLikesSnapshot.exists()) {
+                updates[`userLikes/${encodedNewUsername}`] = userLikesSnapshot.val();
+                updates[`userLikes/${oldEncodedUsername}`] = null;
+            }
+
+            // Perform all updates atomically
+            await this.database.ref().update(updates);
+
+            // Update localStorage
+            localStorage.setItem('username', encodedNewUsername);
+
+            // Clear input and show success
+            document.getElementById('newUsername').value = '';
+            errorDisplay.style.color = '#4CAF50';
+            errorDisplay.textContent = 'Username updated successfully!';
+
+            // Reload page after short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+
+        } catch (error) {
+            console.error('Error updating username:', error);
+            throw error;
+        }
+    }
+
+    // Add this new helper method to validate follow lists
+    async validateFollowList(followList) {
+        try {
+            const validUsers = [];
+            for (const username of Object.keys(followList)) {
+                // Skip self-follows
+                if (username === this.username) continue;
+
+                // Check if user exists
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+
+                if (userSnapshot.exists()) {
+                    validUsers.push(username);
+                } else {
+                    // Remove invalid follow entry
+                    const path = followList === 'followers' ? 
+                        `followers/${this.username}/${username}` : 
+                        `following/${this.username}/${username}`;
+                    await this.database.ref(path).remove();
+                }
+            }
+            return validUsers;
+        } catch (error) {
+            console.error('Error validating follow list:', error);
+            return [];
         }
     }
 }

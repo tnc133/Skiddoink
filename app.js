@@ -30,8 +30,7 @@ class SkiddoinkApp {
         // Setup username display
         this.usernameDisplay = document.querySelector('.username-display');
         if (this.usernameDisplay) {
-            const encodedUsername = localStorage.getItem('username');
-            this.usernameDisplay.textContent = `@${this.decodeUsername(encodedUsername)}`;
+            this.usernameDisplay.textContent = 'View Profile';
         }
 
         // Initialize watched videos tracking
