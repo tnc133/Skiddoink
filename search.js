@@ -9,9 +9,22 @@ class SearchPage {
         this.currentUsers = [];
         this.currentVideos = [];
         
+        this.decodeUsername = username => username.replace(/\(/g, '.');
+        
         this.setupEventListeners();
         // Load popular videos on startup
         this.loadPopularVideos();
+
+        // Add keyboard shortcut listener for logout
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') {
+                e.preventDefault();
+                if (confirm('Are you sure you want to sign out?')) {
+                    localStorage.clear();
+                    window.location.replace('./index.html');
+                }
+            }
+        });
     }
 
     setupEventListeners() {
@@ -154,7 +167,7 @@ class SearchPage {
                             <div class="user-result" onclick="window.location.href='./profile.html?user=${user.username}'">
                                 <img src="${user.profilePic}" alt="Profile">
                                 <div class="user-info">
-                                    <h4>@${user.username}</h4>
+                                    <h4>@${this.decodeUsername(user.username)}</h4>
                                     <p>${user.followers || 0} followers</p>
                                 </div>
                             </div>
@@ -177,7 +190,7 @@ class SearchPage {
                                         <div class="video-likes">❤️ ${video.likes || 0}</div>
                                         <div class="video-info">
                                             <h4>${video.title || 'Untitled Video'}</h4>
-                                            <p>@${video.publisher || '[Deleted User]'}</p>
+                                            <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -217,6 +230,11 @@ class SearchPage {
         localStorage.setItem('activeVideoId', videoId);
         localStorage.setItem('scrollToVideo', 'true');
         window.location.href = './index.html';
+    }
+
+    decodeUsername(username) {
+        // Implement your decoding logic here
+        return username;
     }
 }
 

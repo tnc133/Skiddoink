@@ -15,42 +15,84 @@ class AuthManager {
         }
         this.database = firebase.database();
         this.usersRef = this.database.ref('users');
+
+        // Check user existence on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            this.checkUserExists();
+        });
+    }
+
+    async checkUserExists() {
+        const encodedUsername = localStorage.getItem('username');
+        const userId = localStorage.getItem('userId');
+        
+        if (encodedUsername && userId) {
+            try {
+                const snapshot = await this.usersRef.child(userId).once('value');
+                if (!snapshot.exists()) {
+                    localStorage.clear();
+                    alert('Your account has been deleted by an administrator');
+                    window.location.replace('./index.html');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Error checking user existence:', error);
+                localStorage.clear();
+                window.location.replace('./index.html');
+                return false;
+            }
+        }
+        return false;
+    }
+
+    encodeUsername(username) {
+        return username.replace(/\./g, '(');
+    }
+
+    decodeUsername(encodedUsername) {
+        return encodedUsername.replace(/\(/g, '.');
     }
 
     async signUp(username, password) {
-        // Validate username format and length
+        // Allow dots in the input validation
         const usernameRegex = /^[a-zA-Z0-9_.-]{3,20}$/;
         if (!usernameRegex.test(username)) {
             throw new Error('Username must be 3-20 characters and can only contain letters, numbers, dots, dashes, and underscores');
         }
 
-        // Check if username exists
-        const snapshot = await this.usersRef.orderByChild('username').equalTo(username).once('value');
+        // Encode username for storage
+        const encodedUsername = this.encodeUsername(username);
+
+        // Check if encoded username exists
+        const snapshot = await this.usersRef.orderByChild('username').equalTo(encodedUsername).once('value');
         if (snapshot.exists()) {
             throw new Error('Username already exists');
         }
 
-        // Validate password
-        if (!password || password.length < 6) {
-            throw new Error('Password must be at least 6 characters');
-        }
-        if (password.length > 30) {
-            throw new Error('Password too long (max 30 characters)');
-        }
-
-        // Create user
+        // Store with encoded username
         const userData = {
-            username,
+            username: encodedUsername,  // Store encoded version
             password: await this.hashPassword(password),
             joinDate: Date.now()
         };
 
-        await this.usersRef.push(userData);
-        return this.signIn(username, password);
+        const newUser = await this.usersRef.push(userData);
+        
+        // Store encoded version in localStorage
+        localStorage.setItem('username', encodedUsername);
+        localStorage.setItem('userId', newUser.key);
+        
+        return userData;
     }
 
     async signIn(username, password) {
-        const snapshot = await this.usersRef.orderByChild('username').equalTo(username).once('value');
+        await this.checkUserExists();
+        
+        // Encode username for lookup
+        const encodedUsername = this.encodeUsername(username);
+        
+        const snapshot = await this.usersRef.orderByChild('username').equalTo(encodedUsername).once('value');
         if (!snapshot.exists()) {
             throw new Error('Username does not exist');
         }
@@ -62,7 +104,8 @@ class AuthManager {
             throw new Error('Incorrect password');
         }
 
-        localStorage.setItem('username', username);
+        // Store encoded username in localStorage
+        localStorage.setItem('username', encodedUsername);
         localStorage.setItem('userId', userId);
         return userData;
     }
@@ -77,6 +120,7 @@ class AuthManager {
     }
 
     async updatePassword(currentPassword, newPassword) {
+        if (!await this.checkUserExists()) return;
         const username = localStorage.getItem('username');
         const userId = localStorage.getItem('userId');
         
@@ -90,4 +134,161 @@ class AuthManager {
             password: await this.hashPassword(newPassword)
         });
     }
-} 
+
+    async deleteAccount(password) {
+        if (!await this.checkUserExists()) return;
+        const username = localStorage.getItem('username');
+        const userId = localStorage.getItem('userId');
+        const encodedUsername = this.encodeUsername(username);
+        
+        if (!username || !userId) {
+            throw new Error('Not signed in');
+        }
+
+        // Verify password before deletion
+        const userData = (await this.usersRef.child(userId).once('value')).val();
+        if (await this.hashPassword(password) !== userData.password) {
+            throw new Error('Incorrect password');
+        }
+
+        try {
+            const db = firebase.database();
+            const deletePromises = [];
+
+            // Delete videos (use original username since that's what's stored in videos)
+            console.log('Deleting videos...');
+            const videosSnapshot = await db.ref('videos')
+                .orderByChild('publisher')
+                .equalTo(username)
+                .once('value');
+            if (videosSnapshot.exists()) {
+                Object.keys(videosSnapshot.val()).forEach(videoId => {
+                    deletePromises.push(db.ref(`videos/${videoId}`).remove());
+                });
+            }
+
+            // Delete comments (use original username since that's what's stored in comments)
+            console.log('Deleting comments...');
+            const commentsSnapshot = await db.ref('comments')
+                .orderByChild('username')
+                .equalTo(username)
+                .once('value');
+            if (commentsSnapshot.exists()) {
+                Object.keys(commentsSnapshot.val()).forEach(commentId => {
+                    deletePromises.push(db.ref(`comments/${commentId}`).remove());
+                });
+            }
+
+            // Delete user profile
+            deletePromises.push(db.ref(`users/${userId}`).remove());
+
+            // Clean up related data using encoded username
+            const cleanupPaths = [
+                this.encodeUsername(`userLikes/${username}`),
+                this.encodeUsername(`followers/${username}`),
+                this.encodeUsername(`following/${username}`),
+                this.encodeUsername(`commentLikes/${username}`)
+            ];
+
+            console.log('Cleaning up related data...');
+            for (const path of cleanupPaths) {
+                try {
+                    await db.ref(path).remove();
+                } catch (error) {
+                    console.warn(`Failed to delete path ${path}, might not exist:`, error);
+                }
+            }
+
+            // Execute all deletions
+            console.log('Executing deletions...');
+            await Promise.all(deletePromises);
+
+            // Clear local storage
+            localStorage.clear();
+
+            return true;
+        } catch (error) {
+            console.error('Error deleting account:', error);
+            throw new Error('Failed to delete account: ' + error.message);
+        }
+    }
+
+    // Update deleteUser method to handle encoded usernames
+    async deleteUser(username) {
+        try {
+            const db = firebase.database();
+            const deletePromises = [];
+            const encodedUsername = this.encodeUsername(username);
+
+            // Get the user's ID first
+            const userSnapshot = await db.ref('users')
+                .orderByChild('username')
+                .equalTo(encodedUsername)
+                .once('value');
+            
+            if (userSnapshot.exists()) {
+                const userId = Object.keys(userSnapshot.val())[0];
+                
+                // Check if this is the currently logged in user
+                const currentUserId = localStorage.getItem('userId');
+                const isCurrentUser = currentUserId === userId;
+
+                // Delete videos (use original username for publisher field)
+                const videosSnapshot = await db.ref('videos')
+                    .orderByChild('publisher')
+                    .equalTo(username)  // Use original username
+                    .once('value');
+                    
+                if (videosSnapshot.exists()) {
+                    Object.keys(videosSnapshot.val()).forEach(videoId => {
+                        deletePromises.push(db.ref(`videos/${videoId}`).remove());
+                    });
+                }
+
+                // Delete comments
+                const commentsSnapshot = await db.ref('comments')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+                if (commentsSnapshot.exists()) {
+                    Object.keys(commentsSnapshot.val()).forEach(commentId => {
+                        deletePromises.push(db.ref(`comments/${commentId}`).remove());
+                    });
+                }
+
+                // Delete user profile
+                deletePromises.push(db.ref(`users/${userId}`).remove());
+
+                // Clean up related data
+                console.log('Cleaning up related data...');
+                try {
+                    await db.ref('userLikes').child(encodedUsername).remove();
+                    await db.ref('followers').child(encodedUsername).remove();
+                    await db.ref('following').child(encodedUsername).remove();
+                    await db.ref('commentLikes').child(encodedUsername).remove();
+                } catch (error) {
+                    console.warn('Failed to cleanup some user data:', error);
+                }
+
+                // Execute all deletions
+                await Promise.all(deletePromises);
+
+                // If we're deleting the current user, force immediate logout
+                if (isCurrentUser) {
+                    localStorage.clear();
+                    alert('Your account has been deleted');
+                    window.location.replace('./index.html');
+                }
+
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            throw error;
+        }
+    }
+}
+
+// Create instance on script load to trigger checks
+const authManager = new AuthManager(); 

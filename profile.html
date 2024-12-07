@@ -18,7 +18,7 @@
             <div class="profile-header">
                 <div class="profile-info">
                     <div class="profile-pic">
-                        <img src="default-avatar.png" alt="Profile" id="profilePic">
+                        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSI1MCIgZmlsbD0iIzQ0NDQ0NCIvPjxwYXRoIGQ9Ik01MCAyNUMzNi4xOTI5IDI1IDI1IDM2LjE5MjkgMjUgNTBDMjUgNjMuODA3MSAzNi4xOTI5IDc1IDUwIDc1QzYzLjgwNzEgNzUgNzUgNjMuODA3MSA3NSA1MEM3NSAzNi4xOTI5IDYzLjgwNzEgMjUgNTAgMjVaTTQwLjUgNDQuNUM0Mi40MzMgNDQuNSA0NCA0Mi45MzMgNDQgNDFDNDQgMzkuMDY3IDQyLjQzMyAzNy41IDQwLjUgMzcuNUMzOC41NjcgMzcuNSAzNyAzOS4wNjcgMzcgNDFDMzcgNDIuOTMzIDM4LjU2NyA0NC41IDQwLjUgNDQuNVpNNTkuNSA0NC41QzYxLjQzMyA0NC41IDYzIDQyLjkzMyA2MyA0MUM2MyAzOS4wNjcgNjEuNDMzIDM3LjUgNTkuNSAzNy41QzU3LjU2NyAzNy41IDU2IDM5LjA2NyA1NiA0MUM1NiA0Mi45MzMgNTcuNTY3IDQ0LjUgNTkuNSA0NC41Wk01MCA2Ny41QzU1LjUyMjggNjcuNSA2MCA2My4wMjI4IDYwIDU3LjVINDBDNDAgNjMuMDIyOCA0NC40NzcyIDY3LjUgNTAgNjcuNVoiIGZpbGw9IiNGRkYiLz48L3N2Zz4=" alt="Profile" id="profilePic">
                         <div class="profile-pic-overlay">Change Photo</div>
                     </div>
                     <h2 class="profile-username"></h2>
@@ -81,6 +81,13 @@
                         <input type="password" id="confirmPassword" placeholder="Confirm New Password">
                         <button id="updatePassword">Update Password</button>
                         <p class="settings-error"></p>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Delete Account</h4>
+                        <p class="delete-warning">⚠️ This action cannot be undone. All your videos and data will be permanently deleted.</p>
+                        <input type="password" id="deleteAccountPassword" placeholder="Enter password to confirm">
+                        <button id="deleteAccountBtn" class="delete-account-btn">Delete Account</button>
+                        <p class="delete-error"></p>
                     </div>
                     <button id="signoutBtn" class="signout-btn">Sign Out</button>
                     <button class="close-settings">Close</button>

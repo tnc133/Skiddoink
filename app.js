@@ -2,6 +2,8 @@ const DEFAULT_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaH
 
 class SkiddoinkApp {
     constructor() {
+        this.decodeUsername = username => username.replace(/\(/g, '.');
+
         if (!firebase.apps.length) {
             console.error('Firebase not initialized');
             return;
@@ -28,7 +30,8 @@ class SkiddoinkApp {
         // Setup username display
         this.usernameDisplay = document.querySelector('.username-display');
         if (this.usernameDisplay) {
-            this.usernameDisplay.textContent = `@${localStorage.getItem('username')}`;
+            const encodedUsername = localStorage.getItem('username');
+            this.usernameDisplay.textContent = `@${this.decodeUsername(encodedUsername)}`;
         }
 
         // Initialize watched videos tracking
@@ -144,6 +147,20 @@ class SkiddoinkApp {
 
         // Remove all muting related code and replace with welcome popup
         this.showWelcomePopup();
+
+        // Add keyboard shortcut for logout
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') {
+                e.preventDefault();
+                if (confirm('Are you sure you want to sign out?')) {
+                    localStorage.clear();
+                    window.location.replace('./index.html'); // Use replace to prevent going back
+                }
+            }
+        });
+
+        // Add this property to track active comment modal
+        this.activeCommentModal = null;
     }
 
     checkUsername() {
@@ -587,7 +604,9 @@ class SkiddoinkApp {
                             <div>
                                 <h3>${video.title || 'Untitled Video'}</h3>
                                 <div class="publisher-row">
-                                    <a href="./profile.html?user=${video.publisher}" class="publisher">@${video.publisher || '[Deleted User]'}</a>
+                                    <a href="./profile.html?user=${video.publisher}" class="publisher">
+                                        @${video.publisher ? this.decodeUsername(video.publisher) : '[Deleted User]'}
+                                    </a>
                                     ${video.publisher && video.publisher !== '[Deleted User]' && video.publisher !== localStorage.getItem('username') ? `
                                         <button class="follow-btn" data-username="${video.publisher}" data-following="${this.following.has(video.publisher)}">
                                             ${this.following.has(video.publisher) ? 'Following' : 'Follow'}
@@ -763,10 +782,12 @@ class SkiddoinkApp {
     }
 
     async showComments(video) {
+        // If there's already an open comment modal, just return
+        if (this.activeCommentModal || this.isInCommentMode) {
+            return;
+        }
+
         this.isInCommentMode = true;
-        
-        // Disconnect all observers during comment mode
-        this.observers.forEach(observer => observer.disconnect());
         
         const modal = document.createElement('div');
         modal.className = 'comment-modal';
@@ -783,55 +804,87 @@ class SkiddoinkApp {
         `;
 
         document.body.appendChild(modal);
+        this.activeCommentModal = modal;
         requestAnimationFrame(() => modal.classList.add('active'));
 
+        // Improved scroll handler
+        const handleScroll = () => {
+            if (this.activeCommentModal && this.isInCommentMode) {
+                const activeContainer = this.feed.querySelector('.video-container.active');
+                const activeVideo = activeContainer?.querySelector('video');
+                
+                // Pause the video before closing modal
+                if (activeVideo && !activeVideo.paused) {
+                    activeVideo.pause();
+                }
+                
+                modal.classList.remove('active');
+                setTimeout(() => {
+                    modal.remove();
+                    this.activeCommentModal = null;
+                    this.isInCommentMode = false;
+                    
+                    // Find the video that should be playing based on viewport
+                    const containers = Array.from(document.querySelectorAll('.video-container'));
+                    const visibleContainer = containers.find(container => {
+                        const rect = container.getBoundingClientRect();
+                        const threshold = window.innerHeight * 0.7;
+                        return rect.top <= threshold && rect.bottom >= threshold;
+                    });
+
+                    if (visibleContainer) {
+                        const video = visibleContainer.querySelector('video');
+                        if (video) {
+                            // Stop any other playing videos
+                            containers.forEach(c => {
+                                if (c !== visibleContainer) {
+                                    const v = c.querySelector('video');
+                                    if (v) v.pause();
+                                    c.classList.remove('active');
+                                }
+                            });
+
+                            // Play the visible video
+                            video.currentTime = 0;
+                            video.play().catch(console.error);
+                            visibleContainer.classList.add('active');
+                        }
+                    }
+
+                    this.isTransitioning = false;
+                }, 300);
+                
+                // Remove the scroll listener
+                this.feed.removeEventListener('scroll', handleScroll);
+            }
+        };
+
+        this.feed.addEventListener('scroll', handleScroll);
+
+        // Improved close button handler
         const closeBtn = modal.querySelector('.close-comments');
         closeBtn.addEventListener('click', () => {
+            if (!this.activeCommentModal) return;
+            
             const activeContainer = this.feed.querySelector('.video-container.active');
             const activeVideo = activeContainer?.querySelector('video');
             const wasPlaying = activeVideo && !activeVideo.paused;
             
-            // Prevent any intersection observer triggers during the transition
             this.isTransitioning = true;
-            
             modal.classList.remove('active');
             
             setTimeout(() => {
                 modal.remove();
+                this.activeCommentModal = null;
                 this.isInCommentMode = false;
                 
-                // Reconnect observers but modify their callback behavior
-                this.observers.forEach((observer, container) => {
-                    if (container.isConnected && container !== activeContainer) {
-                        observer.observe(container);
-                    }
-                });
-
-                // Restore the active video state without touching currentTime
-                if (activeContainer && activeVideo) {
+                if (activeContainer) {
                     activeContainer.classList.add('active');
-                    
-                    if (wasPlaying) {
-                        // Only ensure the video keeps playing without modifying time
-                        if (activeVideo.paused) {
-                            activeVideo.play()
-                                .then(() => {
-                                    setTimeout(() => {
-                                        this.isTransitioning = false;
-                                    }, 100);
-                                })
-                                .catch(console.error);
-                        } else {
-                            setTimeout(() => {
-                                this.isTransitioning = false;
-                            }, 100);
-                        }
-                    } else {
-                        this.isTransitioning = false;
-                    }
-                } else {
-                    this.isTransitioning = false;
                 }
+                
+                this.isTransitioning = false;
+                // Remove the scroll listener when closing
+                this.feed.removeEventListener('scroll', handleScroll);
             }, 300);
         });
 
@@ -967,12 +1020,9 @@ class SkiddoinkApp {
                     <div class="comment-content">
                         <div class="comment-header-text">
                             <a href="./profile.html?user=${comment.username}" class="comment-username">
-                                @${comment.username}
-                                ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
+                                @${comment.username ? this.decodeUsername(comment.username) : '[Deleted User]'}
                             </a>
-                            ${comment.pinned ? '<span class="pinned-badge"> Pinned</span>' : ''}
-                            <span class="comment-time">${this.formatDate(comment.timestamp)}</span>
-                            ${isOwnComment || isAdmin ? '<button class="delete-comment-btn">🗑️</button>' : ''}
+                            ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
                         </div>
                         <p class="comment-text">${comment.text}</p>
                         <div class="comment-actions">
@@ -1117,16 +1167,19 @@ class SkiddoinkApp {
             return;
         }
         
-        if (username === publisherUsername) return;
-        if (!publisherUsername || publisherUsername === '[Deleted User]') {
-            alert('Cannot follow this user');
+        // Add stricter check for deleted user
+        if (!publisherUsername || publisherUsername === '[Deleted User]' || username === publisherUsername) {
+            console.log('Cannot follow this user');
             return;
         }
         
         try {
-            const followingRef = this.database.ref(`following/${username}/${publisherUsername}`);
-            const followersRef = this.database.ref(`followers/${publisherUsername}/${username}`);
-            const userRef = this.database.ref(`users/${username}/following/${publisherUsername}`);
+            const encodedUsername = username.replace(/\./g, '(');
+            const encodedPublisher = publisherUsername.replace(/\./g, '(');
+            
+            const followingRef = this.database.ref(`following/${encodedUsername}/${encodedPublisher}`);
+            const followersRef = this.database.ref(`followers/${encodedPublisher}/${encodedUsername}`);
+            const userRef = this.database.ref(`users/${encodedUsername}/following/${encodedPublisher}`);
             
             if (this.following.has(publisherUsername)) {
                 // Unfollow

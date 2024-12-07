@@ -300,6 +300,11 @@
     border-radius: 10px;
     width: 90%;
     max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    position: relative;
 }
 
 .settings-section {
@@ -326,6 +331,8 @@
 }
 
 .close-settings {
+    position: sticky;
+    bottom: 0;
     width: 100%;
     padding: 10px;
     background: #FF4444;
@@ -334,6 +341,17 @@
     color: white;
     cursor: pointer;
     margin-top: 20px;
+    z-index: 1;
+}
+
+.settings-content > *:not(.close-settings) {
+    margin-bottom: 10px;
+}
+
+.settings-content::after {
+    content: '';
+    display: block;
+    height: 20px;
 }
 
 .upload-section {
@@ -645,4 +663,27 @@
         width: 95%;
         padding: 1rem;
     }
+}
+
+.delete-account-btn {
+    background: #FF0000;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.delete-warning {
+    color: #FF4444;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.delete-error {
+    color: #FF4444;
+    margin-top: 10px;
+    font-size: 0.9rem;
 } 

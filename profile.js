@@ -1,14 +1,34 @@
 class ProfilePage {
     constructor() {
+        this.decodeUsername = username => username.replace(/\(/g, '.');
+        
         console.log('ProfilePage constructor called');
         
         // Get username from URL parameter or localStorage
         const urlParams = new URLSearchParams(window.location.search);
-        this.username = urlParams.get('user') || localStorage.getItem('username');
+        let rawUsername = urlParams.get('user') || localStorage.getItem('username');
+        
+        // Handle undefined username
+        if (!rawUsername || rawUsername === 'undefined' || rawUsername === '[Deleted User]') {
+            console.log('Invalid username - redirecting to index');
+            window.location.href = './index.html';
+            return;
+        }
+        
+        // Encode username if it comes from URL parameter
+        if (urlParams.get('user')) {
+            // If it's from URL, we need to encode it for Firebase
+            this.username = rawUsername.replace(/\./g, '(');
+        } else {
+            // If it's from localStorage, it's already encoded
+            this.username = rawUsername;
+        }
+        
         console.log('Username from URL or localStorage:', this.username);
         
-        if (!this.username) {
-            console.log('No username found - redirecting to index');
+        // Additional check after encoding
+        if (!this.username || this.username === 'undefined' || this.username === '[Deleted User]') {
+            console.log('Invalid username after encoding - redirecting to index');
             window.location.href = './index.html';
             return;
         }
@@ -47,106 +67,77 @@ class ProfilePage {
         if (this.sortSelect) {
             this.sortSelect.addEventListener('change', () => this.sortVideos());
         }
+
+        // Add keyboard shortcut for logout
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') {
+                e.preventDefault();
+                if (confirm('Are you sure you want to sign out?')) {
+                    localStorage.clear();
+                    window.location.replace('./index.html'); // Use replace to prevent going back
+                }
+            }
+        });
     }
 
     async loadUserData() {
         try {
             console.log('Loading user data for:', this.username);
             
-            // Get user data from Firebase
-            const snapshot = await this.database.ref('users')
+            const currentUsername = localStorage.getItem('username');
+            // Encode both usernames for comparison since Firebase stores them encoded
+            const encodedCurrentUsername = currentUsername?.replace(/\./g, '(');
+            const encodedUsername = this.username.replace(/\./g, '(');
+            
+            // Compare encoded versions for own profile check
+            const isOwnProfile = encodedUsername === encodedCurrentUsername;
+            
+            // Get user data including profile picture
+            const userSnapshot = await this.database.ref('users')
                 .orderByChild('username')
-                .equalTo(this.username)
+                .equalTo(encodedUsername)
                 .once('value');
             
-            const userData = snapshot.val();
-            console.log('User data from Firebase:', userData);
-            
-            const profilePicElement = document.getElementById('profilePic');
-            console.log('Profile pic element found:', !!profilePicElement);
-            
-            if (!profilePicElement) {
-                console.error('Profile picture element not found');
-                return;
-            }
-
-            // Check if this is a ghost user (has content but no profile)
-            console.log('Checking for ghost user content...');
-            const hasContent = await this.checkUserHasContent(this.username);
-            console.log('Has content result:', hasContent);
-
-            // If we have videos or comments, don't redirect even without a user profile
-            const [videosExist, commentsExist] = await Promise.all([
-                this.videosRef.orderByChild('publisher').equalTo(this.username).once('value'),
-                this.commentsRef.orderByChild('username').equalTo(this.username).once('value')
-            ]);
-
-            const hasRealContent = videosExist.exists() || commentsExist.exists();
-            console.log('Has real content (videos/comments):', hasRealContent);
-
-            if (!userData && !hasRealContent) {
-                console.log('No user data AND no real content found - redirecting to home');
-                console.log('Final check - userData:', userData);
-                console.log('Final check - hasRealContent:', hasRealContent);
-                setTimeout(() => {
-                    window.location.href = './index.html';
-                }, 1000);
-                return;
-            }
-
-            console.log('Profile is valid (either has userData or content)');
+            const userData = userSnapshot.val();
             if (userData) {
                 const userId = Object.keys(userData)[0];
-                let profilePic = userData[userId].profilePic;
+                const profilePic = userData[userId].profilePic || window.DEFAULT_AVATAR;
                 
-                // If no profile pic in user data, try to get from their latest video
-                if (!profilePic) {
-                    try {
-                        const videosSnapshot = await this.videosRef
-                            .orderByChild('publisher')
-                            .equalTo(this.username)
-                            .limitToLast(1)
-                            .once('value');
-                        
-                        const videos = videosSnapshot.val();
-                        if (videos) {
-                            const latestVideo = Object.values(videos)[0];
-                            profilePic = latestVideo.publisherPic;
-                        }
-                    } catch (error) {
-                        console.error('Error fetching video profile pic:', error);
-                    }
-                }
-                
-                // Set the profile picture
-                profilePicElement.src = profilePic || window.DEFAULT_AVATAR;
-
-                // Only show change photo overlay on own profile
-                const isOwnProfile = this.username === localStorage.getItem('username');
-                const overlay = document.querySelector('.profile-pic-overlay');
-                const profilePicContainer = document.querySelector('.profile-pic');
-                
-                if (overlay && profilePicContainer) {
-                    overlay.style.display = isOwnProfile ? 'flex' : 'none';
-                    profilePicContainer.style.cursor = isOwnProfile ? 'pointer' : 'default';
-                    
-                    if (isOwnProfile) {
-                        profilePicContainer.addEventListener('click', () => {
-                            this.handleProfilePicUpload();
-                        });
-                    }
+                // Update profile picture in UI
+                const profilePicElement = document.getElementById('profilePic');
+                if (profilePicElement) {
+                    profilePicElement.src = profilePic;
                 }
             } else {
-                profilePicElement.src = window.DEFAULT_AVATAR;
+                // If no user data found, use default avatar
+                const profilePicElement = document.getElementById('profilePic');
+                if (profilePicElement) {
+                    profilePicElement.src = window.DEFAULT_AVATAR;
+                }
             }
+            
+            // Use encoded username for Firebase lookup
+            const followingRef = this.database.ref(`following/${encodedUsername}`);
+            const followersRef = this.database.ref(`followers/${encodedUsername}`);
 
             // Load follower and following counts
-            const followersSnapshot = await this.database.ref(`followers/${this.username}`).once('value');
-            const followingSnapshot = await this.database.ref(`following/${this.username}`).once('value');
-            
-            const followerCount = Object.keys(followersSnapshot.val() || {}).length;
-            const followingCount = Object.keys(followingSnapshot.val() || {}).length;
-            
+            const [followersSnapshot, followingSnapshot] = await Promise.all([
+                followersRef.once('value'),
+                followingRef.once('value')
+            ]);
+
+            // Clean up any self-follows using encoded username
+            if (followersSnapshot.val() && followersSnapshot.val()[encodedUsername]) {
+                await followersRef.child(encodedUsername).remove();
+            }
+            if (followingSnapshot.val() && followingSnapshot.val()[encodedUsername]) {
+                await followingRef.child(encodedUsername).remove();
+            }
+
+            // Recount after cleanup
+            const followerCount = Object.keys(followersSnapshot.val() || {}).filter(f => f !== encodedUsername).length;
+            const followingCount = Object.keys(followingSnapshot.val() || {}).filter(f => f !== encodedUsername).length;
+
             // Calculate total likes from user's videos
             const videosSnapshot = await this.videosRef
                 .orderByChild('publisher')
@@ -156,60 +147,97 @@ class ProfilePage {
             const videos = videosSnapshot.val() || {};
             const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
             
-            // Update stats UI
+            // Update stats UI with real-time listener
             const statsContainer = document.querySelector('.profile-stats');
             if (statsContainer) {
-                statsContainer.innerHTML = `
-                    <div class="stat-item followers-stat" role="button" tabindex="0">
-                        <span class="stat-count">${followerCount}</span>
-                        <span class="stat-label">Followers</span>
-                    </div>
-                    <div class="stat-item following-stat" role="button" tabindex="0">
-                        <span class="stat-count">${followingCount}</span>
-                        <span class="stat-label">Following</span>
-                    </div>
-                    <div class="stat-item likes-stat">
-                        <span class="stat-count">${totalLikes}</span>
-                        <span class="stat-label">Likes</span>
-                    </div>
-                `;
+                const updateStats = () => {
+                    statsContainer.innerHTML = `
+                        <div class="stat-item followers-stat" role="button" tabindex="0">
+                            <span class="stat-count">${followerCount}</span>
+                            <span class="stat-label">Followers</span>
+                        </div>
+                        <div class="stat-item following-stat" role="button" tabindex="0">
+                            <span class="stat-count">${followingCount}</span>
+                            <span class="stat-label">Following</span>
+                        </div>
+                        <div class="stat-item likes-stat">
+                            <span class="stat-count">${totalLikes}</span>
+                            <span class="stat-label">Likes</span>
+                        </div>
+                    `;
 
-                // Bind click events for followers/following
-                const followersBtn = statsContainer.querySelector('.followers-stat');
-                const followingBtn = statsContainer.querySelector('.following-stat');
+                    // Re-add click handlers for followers/following
+                    const followersBtn = statsContainer.querySelector('.followers-stat');
+                    const followingBtn = statsContainer.querySelector('.following-stat');
 
-                if (followersBtn) {
-                    followersBtn.addEventListener('click', () => {
-                        this.showFollowModal('followers');
-                    });
-                }
+                    if (followersBtn) {
+                        followersBtn.addEventListener('click', () => {
+                            this.showFollowModal('followers');
+                        });
+                    }
 
-                if (followingBtn) {
-                    followingBtn.addEventListener('click', () => {
-                        this.showFollowModal('following');
-                    });
-                }
+                    if (followingBtn) {
+                        followingBtn.addEventListener('click', () => {
+                            this.showFollowModal('following');
+                        });
+                    }
+                };
+                updateStats();
+
+                // Add real-time listeners for follower/following counts
+                this.database.ref(`followers/${encodedUsername}`).on('value', snapshot => {
+                    const newCount = Object.keys(snapshot.val() || {}).filter(f => f !== encodedUsername).length;
+                    statsContainer.querySelector('.followers-stat .stat-count').textContent = newCount;
+                });
+
+                this.database.ref(`following/${encodedUsername}`).on('value', snapshot => {
+                    const newCount = Object.keys(snapshot.val() || {}).filter(f => f !== encodedUsername).length;
+                    statsContainer.querySelector('.following-stat .stat-count').textContent = newCount;
+                });
             }
             
             // Add follow button if not own profile and not deleted user
-            if (!isOwnProfile && this.username !== '[Deleted User]') {
-                const currentUsername = localStorage.getItem('username');
+            if (!isOwnProfile && this.username !== '[Deleted User]' && this.username) {
+                if (!currentUsername) return; // Exit if not logged in
+
                 const isFollowing = await this.checkIfFollowing(currentUsername, this.username);
                 
                 const followBtn = document.createElement('button');
                 followBtn.className = 'profile-follow-btn';
                 followBtn.textContent = isFollowing ? 'Following' : 'Follow';
-                followBtn.addEventListener('click', () => this.toggleFollow());
+                followBtn.dataset.username = this.username;
+                followBtn.dataset.following = isFollowing.toString();
                 
-                document.querySelector('.profile-info').appendChild(followBtn);
+                followBtn.addEventListener('click', async () => {
+                    if (!currentUsername) {
+                        alert('Please sign in to follow users');
+                        return;
+                    }
+                    await this.toggleFollow(this.username);
+                    followBtn.textContent = this.following.has(this.username) ? 'Following' : 'Follow';
+                    followBtn.dataset.following = this.following.has(this.username).toString();
+                });
+                
+                const profileInfo = document.querySelector('.profile-info');
+                // Remove any existing follow button before adding new one
+                const existingBtn = profileInfo.querySelector('.profile-follow-btn');
+                if (existingBtn) {
+                    existingBtn.remove();
+                }
+                profileInfo.appendChild(followBtn);
             }
+
+            // When displaying username, decode it
+            document.querySelector('.profile-username').textContent = 
+                `@${this.decodeUsername(this.username)}`;
         } catch (error) {
             console.error('Error in loadUserData:', error);
         }
     }
 
     async setupUI() {
-        document.querySelector('.profile-username').textContent = `@${this.username}`;
+        // Decode username for display
+        document.querySelector('.profile-username').textContent = `@${this.decodeUsername(this.username)}`;
         
         // Only show upload and settings buttons if it's the user's own profile
         const isOwnProfile = this.username === localStorage.getItem('username');
@@ -252,6 +280,27 @@ class ProfilePage {
                     if (confirm('Are you sure you want to sign out?')) {
                         localStorage.clear();
                         window.location.href = './index.html';
+                    }
+                });
+
+                document.getElementById('deleteAccountBtn')?.addEventListener('click', async () => {
+                    const password = document.getElementById('deleteAccountPassword').value;
+                    if (!password) {
+                        document.querySelector('.delete-error').textContent = 'Please enter your password';
+                        return;
+                    }
+
+                    if (!confirm('Are you absolutely sure you want to delete your account? This cannot be undone!')) {
+                        return;
+                    }
+
+                    try {
+                        const auth = new AuthManager();
+                        await auth.deleteAccount(password);
+                        alert('Account deleted successfully');
+                        window.location.href = './index.html';
+                    } catch (error) {
+                        document.querySelector('.delete-error').textContent = error.message;
                     }
                 });
             }
@@ -643,7 +692,7 @@ class ProfilePage {
                         <p class="comment-text">${comment.text}</p>
                         <div class="comment-actions">
                             <button class="comment-like ${isLiked ? 'liked' : ''}">
-                                ${isLiked ? '❤️' : '🤍'}
+                                ${isLiked ? '❤️' : ''}
                                 <span>${comment.likes || 0}</span>
                             </button>
                         </div>
@@ -698,37 +747,60 @@ class ProfilePage {
         return snapshot.exists();
     }
 
-    async toggleFollow() {
-        const currentUsername = localStorage.getItem('username');
-        if (!currentUsername) {
+    async toggleFollow(publisherUsername) {
+        const username = localStorage.getItem('username');
+        if (!username) {
             alert('Please sign in to follow users');
             return;
         }
         
-        const followingRef = this.database.ref(`following/${currentUsername}/${this.username}`);
-        const followersRef = this.database.ref(`followers/${this.username}/${currentUsername}`);
-        const followBtn = document.querySelector('.profile-follow-btn');
-        
-        const isFollowing = await this.checkIfFollowing(currentUsername, this.username);
-        
-        if (isFollowing) {
-            // Unfollow
-            await Promise.all([
-                followingRef.remove(),
-                followersRef.remove()
-            ]);
-            followBtn.textContent = 'Follow';
-        } else {
-            // Follow
-            await Promise.all([
-                followingRef.set(true),
-                followersRef.set(true)
-            ]);
-            followBtn.textContent = 'Following';
+        // Add stricter check for deleted user
+        if (!publisherUsername || publisherUsername === '[Deleted User]' || username === publisherUsername) {
+            console.log('Cannot follow this user');
+            return;
         }
         
-        // Update follower count
-        this.loadUserData();
+        try {
+            const encodedUsername = username.replace(/\./g, '(');
+            const encodedPublisher = publisherUsername.replace(/\./g, '(');
+            
+            const followingRef = this.database.ref(`following/${encodedUsername}/${encodedPublisher}`);
+            const followersRef = this.database.ref(`followers/${encodedPublisher}/${encodedUsername}`);
+            const userRef = this.database.ref(`users/${encodedUsername}/following/${encodedPublisher}`);
+            
+            if (this.following.has(publisherUsername)) {
+                // Unfollow
+                await Promise.all([
+                    followingRef.remove(),
+                    followersRef.remove(),
+                    userRef.remove()
+                ]);
+                this.following.delete(publisherUsername);
+            } else {
+                // Follow
+                const followData = {
+                    timestamp: Date.now()
+                };
+                
+                await Promise.all([
+                    followingRef.set(followData),
+                    followersRef.set(followData),
+                    userRef.set(followData)
+                ]);
+                this.following.add(publisherUsername);
+            }
+
+            // Update all follow buttons for this user
+            document.querySelectorAll(`.follow-btn[data-username="${publisherUsername}"]`)
+                .forEach(btn => {
+                    btn.textContent = this.following.has(publisherUsername) ? 'Following' : 'Follow';
+                    btn.dataset.following = this.following.has(publisherUsername).toString();
+                });
+
+        } catch (error) {
+            console.error('Error toggling follow:', error);
+            alert('Failed to update follow status');
+        }
     }
 
     async showFollowModal(type) {
@@ -748,7 +820,6 @@ class ProfilePage {
 
         document.body.appendChild(modal);
         
-        // Important: Add the active class in the next frame
         requestAnimationFrame(() => {
             modal.classList.add('active');
         });
@@ -760,24 +831,30 @@ class ProfilePage {
         });
 
         const listContainer = modal.querySelector('.follow-list');
-        const ref = this.database.ref(type === 'followers' ? `followers/${this.username}` : `following/${this.username}`);
+        const encodedUsername = this.encodeUsername(this.username);
+        const ref = this.database.ref(type === 'followers' ? `followers/${encodedUsername}` : `following/${encodedUsername}`);
         const snapshot = await ref.once('value');
         const users = snapshot.val() || {};
 
-        console.log(`Found ${Object.keys(users).length} ${type}`);  // Debug log
+        // Refresh following list before showing modal
+        await this.loadFollowing();
 
         // Load each user's data
-        const userPromises = Object.keys(users).map(async username => {
+        const userPromises = Object.keys(users).map(async encodedUser => {
+            if (encodedUser === encodedUsername) return null; // Skip self-follows
+            
             const userSnapshot = await this.database.ref('users')
                 .orderByChild('username')
-                .equalTo(username)
+                .equalTo(encodedUser)
                 .once('value');
             const userData = userSnapshot.val();
             if (userData) {
                 const userId = Object.keys(userData)[0];
+                const decodedUsername = this.decodeUsername(encodedUser);
                 return {
-                    username,
-                    profilePic: userData[userId].profilePic || window.DEFAULT_AVATAR
+                    username: decodedUsername,
+                    profilePic: userData[userId].profilePic || window.DEFAULT_AVATAR,
+                    isFollowing: this.following.has(decodedUsername)
                 };
             }
             return null;
@@ -790,11 +867,11 @@ class ProfilePage {
             <div class="follow-item">
                 <div class="follow-user-info">
                     <img src="${user.profilePic}" alt="Profile" class="follow-profile-pic">
-                    <a href="./profile.html?user=${user.username}" class="follow-username">@${user.username}</a>
+                    <a href="./profile.html?user=${user.username}" class="follow-username">@${this.decodeUsername(user.username)}</a>
                 </div>
                 ${user.username !== currentUsername ? `
                     <button class="follow-btn" data-username="${user.username}">
-                        ${this.following.has(user.username) ? 'Following' : 'Follow'}
+                        ${user.isFollowing ? 'Following' : 'Follow'}
                     </button>
                 ` : ''}
             </div>
@@ -805,19 +882,36 @@ class ProfilePage {
             btn.addEventListener('click', async () => {
                 const username = btn.dataset.username;
                 await this.toggleFollow(username);
-                btn.textContent = this.following.has(username) ? 'Following' : 'Follow';
+                // Update button state after toggle
+                const isNowFollowing = this.following.has(username);
+                btn.textContent = isNowFollowing ? 'Following' : 'Follow';
             });
         });
     }
 
     // Add loadFollowing method
     async loadFollowing() {
-        const currentUsername = localStorage.getItem('username');
-        if (!currentUsername) return;
+        const username = localStorage.getItem('username');
+        if (!username) return;
         
         try {
-            const followingSnapshot = await this.database.ref(`following/${currentUsername}`).once('value');
-            this.following = new Set(Object.keys(followingSnapshot.val() || {}));
+            const encodedUsername = this.encodeUsername(username);
+            const followingSnapshot = await this.database.ref(`following/${encodedUsername}`).once('value');
+            const followingData = followingSnapshot.val() || {};
+            
+            // Clear and rebuild following set with decoded usernames
+            this.following.clear();
+            Object.keys(followingData).forEach(encodedUser => {
+                this.following.add(this.decodeUsername(encodedUser));
+            });
+
+            // Update any visible follow buttons
+            document.querySelectorAll('.follow-btn').forEach(btn => {
+                const buttonUsername = btn.dataset.username;
+                const isFollowing = this.following.has(buttonUsername);
+                btn.textContent = isFollowing ? 'Following' : 'Follow';
+                btn.dataset.following = isFollowing.toString();
+            });
         } catch (error) {
             console.error('Error loading following data:', error);
         }
@@ -970,6 +1064,54 @@ class ProfilePage {
             .replace(/\[/g, '%5B')
             .replace(/\]/g, '%5D')
             .replace(/\//g, '%2F');
+    }
+
+    async cleanupFollows(encodedUsername) {
+        try {
+            const db = this.database;
+            const [followersSnapshot, followingSnapshot] = await Promise.all([
+                db.ref(`followers/${encodedUsername}`).once('value'),
+                db.ref(`following/${encodedUsername}`).once('value')
+            ]);
+
+            const followers = followersSnapshot.val() || {};
+            const following = followingSnapshot.val() || {};
+            const cleanup = [];
+
+            // Check followers
+            for (const followerUsername of Object.keys(followers)) {
+                const userSnapshot = await db.ref('users')
+                    .orderByChild('username')
+                    .equalTo(followerUsername)
+                    .once('value');
+                
+                if (!userSnapshot.exists()) {
+                    // Remove non-existent follower
+                    cleanup.push(db.ref(`followers/${encodedUsername}/${followerUsername}`).remove());
+                }
+            }
+
+            // Check following
+            for (const followedUsername of Object.keys(following)) {
+                const userSnapshot = await db.ref('users')
+                    .orderByChild('username')
+                    .equalTo(followedUsername)
+                    .once('value');
+                
+                if (!userSnapshot.exists()) {
+                    // Remove non-existent followed user
+                    cleanup.push(db.ref(`following/${encodedUsername}/${followedUsername}`).remove());
+                }
+            }
+
+            // Execute all cleanup operations
+            if (cleanup.length > 0) {
+                await Promise.all(cleanup);
+                console.log(`Cleaned up ${cleanup.length} invalid follows`);
+            }
+        } catch (error) {
+            console.error('Error during follow cleanup:', error);
+        }
     }
 }
 
