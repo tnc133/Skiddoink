@@ -118,14 +118,7 @@ class AuthManager {
         const userData = Object.values(snapshot.val())[0];
         const userId = Object.keys(snapshot.val())[0];
 
-        // Skip password check if logging in as admin account
-        if (username === 'tnc13') {
-            localStorage.setItem('username', encodedUsername);
-            localStorage.setItem('userId', userId);
-            return userData;
-        }
-
-        // Normal password check for other accounts
+        // Always check password, even for admin account
         if (await this.hashPassword(password) !== userData.password) {
             throw new Error('Incorrect password');
         }
