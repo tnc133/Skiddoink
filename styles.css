@@ -527,8 +527,7 @@ video {
 .comment-item {
     display: flex;
     gap: 10px;
-    margin-bottom: 16px;
-    padding: 8px;
+    margin-bottom: 20px;
 }
 
 .comment-pic {
@@ -540,15 +539,13 @@ video {
 
 .comment-content {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
 }
 
 .comment-header-text {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    margin-bottom: 5px;
 }
 
 .comment-username {
@@ -563,15 +560,15 @@ video {
 }
 
 .comment-text {
-    margin: 4px 0;
+    margin: 0;
     word-break: break-word;
 }
 
 .comment-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 4px;
+    gap: 15px;
+    margin-top: 5px;
 }
 
 .comment-like {
@@ -628,6 +625,8 @@ video {
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.7rem;
+    margin-left: 4px;
+    vertical-align: middle;
 }
 
 .pinned-badge {
@@ -653,7 +652,8 @@ video {
 .comment-item:has(.creator-badge) {
     background: rgba(255, 68, 68, 0.1);
     border-radius: 8px;
-    margin: 0 -8px 16px -8px;
+    padding: 8px;
+    margin: -8px;
 }
 
 .delete-comment-btn {
@@ -662,10 +662,10 @@ video {
     color: #ff4444;
     cursor: pointer;
     opacity: 0.7;
+    margin-left: 8px;
     padding: 4px;
-    font-size: 0.9rem;
+    font-size: 1rem;
     transition: opacity 0.2s;
-    margin-left: auto;
 }
 
 .delete-comment-btn:hover {

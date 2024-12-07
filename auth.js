@@ -1,5 +1,24 @@
 class AuthManager {
     constructor() {
+        // Add device identifier check
+        this.ADMIN_DEVICE_ID = 'dev_2qv25petn';  // Your current device ID
+        
+        // Initialize device ID first
+        let deviceId = localStorage.getItem('deviceId');
+        if (!deviceId) {
+            // Generate a new device ID if none exists
+            deviceId = 'dev_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('deviceId', deviceId);
+        }
+        this.currentDeviceId = deviceId;
+        
+        // If this is the admin device, force the ID
+        if (deviceId === this.ADMIN_DEVICE_ID) {
+            localStorage.setItem('isAdmin', 'true');
+        }
+        
+        console.log('Current device ID:', this.currentDeviceId);
+        
         // Initialize Firebase if not already initialized
         if (!firebase.apps.length) {
             const firebaseConfig = {
@@ -89,10 +108,9 @@ class AuthManager {
     async signIn(username, password) {
         await this.checkUserExists();
         
-        // Encode username for lookup
         const encodedUsername = this.encodeUsername(username);
-        
         const snapshot = await this.usersRef.orderByChild('username').equalTo(encodedUsername).once('value');
+        
         if (!snapshot.exists()) {
             throw new Error('Username does not exist');
         }
@@ -100,11 +118,18 @@ class AuthManager {
         const userData = Object.values(snapshot.val())[0];
         const userId = Object.keys(snapshot.val())[0];
 
+        // Skip password check if logging in as admin account
+        if (username === 'tnc13') {
+            localStorage.setItem('username', encodedUsername);
+            localStorage.setItem('userId', userId);
+            return userData;
+        }
+
+        // Normal password check for other accounts
         if (await this.hashPassword(password) !== userData.password) {
             throw new Error('Incorrect password');
         }
 
-        // Store encoded username in localStorage
         localStorage.setItem('username', encodedUsername);
         localStorage.setItem('userId', userId);
         return userData;
@@ -287,6 +312,13 @@ class AuthManager {
             console.error('Error deleting user:', error);
             throw error;
         }
+    }
+
+    setAsAdminDevice() {
+        localStorage.setItem('isAdminDevice', 'true');
+        localStorage.setItem('deviceId', this.ADMIN_DEVICE_ID);
+        this.currentDeviceId = this.ADMIN_DEVICE_ID;
+        console.log('Device set as admin:', this.currentDeviceId);
     }
 }
 

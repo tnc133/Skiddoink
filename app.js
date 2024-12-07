@@ -170,13 +170,13 @@ class SkiddoinkApp {
                 <div class="username-modal-content">
                     <h2>Welcome to Skiddoink!</h2>
                     <div class="auth-tabs">
-                        <button class="auth-tab active" data-tab="signin">Sign In</button>
+                        <button class="auth-tab active" data-tab="signin">Log In</button>
                         <button class="auth-tab" data-tab="signup">Sign Up</button>
                     </div>
                     <div class="auth-form signin-form">
                         <input type="text" id="signinUsername" placeholder="Username">
                         <input type="password" id="signinPassword" placeholder="Password">
-                        <button id="signinBtn">Sign In</button>
+                        <button id="signinBtn">Log In</button>
                         <p class="auth-error"></p>
                     </div>
                     <div class="auth-form signup-form" style="display: none;">
@@ -921,24 +921,24 @@ class SkiddoinkApp {
                     return;
                 }
 
+                // Get current user's profile picture before posting comment
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+                
+                const userData = userSnapshot.val();
+                const userId = Object.keys(userData)[0];
+                const currentProfilePic = userData[userId].profilePic || window.DEFAULT_AVATAR;
+
                 const commentData = {
                     text,
                     username,
                     videoId: video.id,
                     timestamp: Date.now(),
-                    likes: 0
+                    likes: 0,
+                    userPic: currentProfilePic  // Always use current profile picture
                 };
-
-                // Get user profile pic
-                const userSnapshot = await this.database.ref('users')
-                    .orderByChild('username')
-                    .equalTo(username)
-                    .once('value');
-                const userData = userSnapshot.val();
-                if (userData) {
-                    const userId = Object.keys(userData)[0];
-                    commentData.userPic = userData[userId].profilePic || DEFAULT_AVATAR;
-                }
 
                 // Create new comment reference
                 const newCommentRef = this.commentsRef.push();
@@ -963,8 +963,6 @@ class SkiddoinkApp {
                     }
                 }
 
-                // Remove the manual count update here - let the listener handle it
-
             } catch (error) {
                 console.error('Error posting comment:', error);
                 alert('Failed to post comment');
@@ -977,7 +975,6 @@ class SkiddoinkApp {
         // Load and listen for comments
         this.commentsRef.orderByChild('videoId').equalTo(video.id).on('value', async snapshot => {
             const comments = snapshot.val() || {};
-            container.innerHTML = '';
             
             // Get current user's liked comments
             const username = localStorage.getItem('username');
@@ -987,124 +984,143 @@ class SkiddoinkApp {
                 userLikedComments = new Set(Object.keys(likesSnapshot.val() || {}));
             }
 
-            // Convert comments to array for sorting
-            let commentsArray = Object.entries(comments).map(([id, comment]) => ({
-                ...comment,
-                id,
-                isLiked: userLikedComments.has(id)
-            }));
+            // Only do full rebuild if container is empty
+            if (container.children.length === 0) {
+                // Convert comments to array for sorting
+                let commentsArray = Object.entries(comments).map(([id, comment]) => ({
+                    ...comment,
+                    id,
+                    isLiked: userLikedComments.has(id)
+                }));
 
-            // Sort comments: pinned first, then by likes, then by timestamp
-            commentsArray.sort((a, b) => {
-                if (a.pinned && !b.pinned) return -1;
-                if (!a.pinned && b.pinned) return 1;
-                if (a.likes !== b.likes) return (b.likes || 0) - (a.likes || 0);
-                return b.timestamp - a.timestamp;
-            });
+                // Sort comments
+                commentsArray.sort((a, b) => {
+                    if (a.pinned && !b.pinned) return -1;
+                    if (!a.pinned && b.pinned) return 1;
+                    if (a.likes !== b.likes) return (b.likes || 0) - (a.likes || 0);
+                    return b.timestamp - a.timestamp;
+                });
 
-            // Separate creator comments
-            const creatorComments = commentsArray.filter(comment => comment.username === video.publisher);
-            const otherComments = commentsArray.filter(comment => comment.username !== video.publisher);
-
-            // Display creator comments first, then others
-            [...creatorComments, ...otherComments].forEach(comment => {
-                const div = document.createElement('div');
-                div.className = 'comment-item';
-                const isCreator = comment.username === video.publisher;
-                const isOwnComment = comment.username === localStorage.getItem('username');
-                const isAdmin = localStorage.getItem('username') === 'tnc13';
-                const currentUser = localStorage.getItem('username');
-                const canManagePin = currentUser === video.publisher;
+                container.innerHTML = '';  // Clear only on initial load
                 
-                div.innerHTML = `
-                    <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
-                    <div class="comment-content">
-                        <div class="comment-header-text">
-                            <a href="./profile.html?user=${comment.username}" class="comment-username">
-                                @${comment.username ? this.decodeUsername(comment.username) : '[Deleted User]'}
-                            </a>
-                            ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
-                            ${(isOwnComment || isAdmin) ? `
-                                <button class="delete-comment-btn">🗑️</button>
-                            ` : ''}
-                        </div>
-                        <p class="comment-text">${comment.text}</p>
-                        <div class="comment-actions">
-                            <button class="comment-like ${comment.isLiked ? 'liked' : ''}">
-                                ${comment.isLiked ? '❤️' : '🤍'}
-                                <span>${comment.likes || 0}</span>
-                            </button>
-                            ${canManagePin ? `
-                                <button class="pin-comment-btn" data-comment-id="${comment.id}">
-                                    ${comment.pinned ? 'Unpin' : 'Pin'}
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
+                // Build initial comment list
+                commentsArray.forEach(comment => {
+                    const div = document.createElement('div');
+                    div.className = 'comment-item';
+                    div.dataset.commentId = comment.id;  // Add data attribute for finding comments
+                    const isCreator = comment.username === video.publisher;
+                    const isOwnComment = comment.username === localStorage.getItem('username');
+                    const isAdmin = localStorage.getItem('username') === 'tnc13';
 
-                // Add delete button handler
-                const deleteBtn = div.querySelector('.delete-comment-btn');
-                if (deleteBtn) {
-                    deleteBtn.addEventListener('click', async () => {
-                        if (confirm('Are you sure you want to delete this comment?')) {
-                            try {
-                                await this.commentsRef.child(comment.id).remove();
-                            } catch (error) {
-                                console.error('Error deleting comment:', error);
-                                alert('Failed to delete comment');
+                    div.innerHTML = `
+                        <img src="${comment.userPic || DEFAULT_AVATAR}" class="comment-pic" alt="Profile">
+                        <div class="comment-content">
+                            <div class="comment-header-text">
+                                <a href="./profile.html?user=${comment.username}" class="comment-username">
+                                    @${comment.username ? this.decodeUsername(comment.username) : '[Deleted User]'}
+                                </a>
+                                ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
+                                ${(isOwnComment || isAdmin) ? `
+                                    <button class="delete-comment-btn" title="Delete comment">🗑️</button>
+                                ` : ''}
+                            </div>
+                            <p class="comment-text">${comment.text}</p>
+                            <div class="comment-actions">
+                                <button class="comment-like ${comment.isLiked ? 'liked' : ''}">
+                                    ${comment.isLiked ? '❤️' : '🤍'}
+                                    <span>${comment.likes || 0}</span>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+
+                    // Add like button handler
+                    const likeBtn = div.querySelector('.comment-like');
+                    likeBtn.addEventListener('click', async () => {
+                        if (!username) {
+                            alert('Please sign in to like comments');
+                            return;
+                        }
+
+                        try {
+                            const commentRef = this.commentsRef.child(comment.id);
+                            const userLikeRef = this.commentLikesRef.child(username).child(comment.id);
+                            const currentLikes = comment.likes || 0;
+
+                            // Optimistically update UI first
+                            if (comment.isLiked) {
+                                likeBtn.innerHTML = `🤍 <span>${currentLikes - 1}</span>`;
+                                likeBtn.classList.remove('liked');
+                            } else {
+                                likeBtn.innerHTML = `❤️ <span>${currentLikes + 1}</span>`;
+                                likeBtn.classList.add('liked');
+                            }
+
+                            // Then update Firebase
+                            if (comment.isLiked) {
+                                await Promise.all([
+                                    commentRef.update({ likes: currentLikes - 1 }),
+                                    userLikeRef.remove()
+                                ]);
+                                comment.likes = currentLikes - 1;
+                                comment.isLiked = false;
+                            } else {
+                                await Promise.all([
+                                    commentRef.update({ likes: currentLikes + 1 }),
+                                    userLikeRef.set(true)
+                                ]);
+                                comment.likes = currentLikes + 1;
+                                comment.isLiked = true;
+                            }
+                        } catch (error) {
+                            console.error('Error updating comment like:', error);
+                            alert('Failed to update like');
+                            // Revert UI on error
+                            if (comment.isLiked) {
+                                likeBtn.innerHTML = `❤️ <span>${comment.likes}</span>`;
+                                likeBtn.classList.add('liked');
+                            } else {
+                                likeBtn.innerHTML = `🤍 <span>${comment.likes}</span>`;
+                                likeBtn.classList.remove('liked');
                             }
                         }
                     });
-                }
 
-                // Add like button handler
-                const likeBtn = div.querySelector('.comment-like');
-                likeBtn.addEventListener('click', async () => {
-                    if (!username) {
-                        alert('Please sign in to like comments');
-                        return;
+                    // Add delete handler
+                    if (isOwnComment || isAdmin) {
+                        const deleteBtn = div.querySelector('.delete-comment-btn');
+                        deleteBtn.addEventListener('click', async () => {
+                            if (confirm('Are you sure you want to delete this comment?')) {
+                                try {
+                                    await this.commentsRef.child(comment.id).remove();
+                                } catch (error) {
+                                    console.error('Error deleting comment:', error);
+                                    alert('Failed to delete comment');
+                                }
+                            }
+                        });
                     }
 
-                    try {
-                        const commentRef = this.commentsRef.child(comment.id);
-                        const userLikeRef = this.commentLikesRef.child(username).child(comment.id);
-
-                        if (comment.isLiked) {
-                            await Promise.all([
-                                commentRef.update({ likes: (comment.likes || 0) - 1 }),
-                                userLikeRef.remove()
-                            ]);
-                        } else {
-                            await Promise.all([
-                                commentRef.update({ likes: (comment.likes || 0) + 1 }),
-                                userLikeRef.set(true)
-                            ]);
+                    container.appendChild(div);
+                });
+            } else {
+                // Just update like counts and states for existing comments
+                Object.entries(comments).forEach(([commentId, updatedComment]) => {
+                    const existingComment = container.querySelector(`[data-comment-id="${commentId}"]`);
+                    if (existingComment) {
+                        const likeBtn = existingComment.querySelector('.comment-like');
+                        if (likeBtn) {
+                            const isLiked = userLikedComments.has(commentId);
+                            likeBtn.innerHTML = `${isLiked ? '❤️' : '🤍'} <span>${updatedComment.likes || 0}</span>`;
+                            if (isLiked) {
+                                likeBtn.classList.add('liked');
+                            } else {
+                                likeBtn.classList.remove('liked');
+                            }
                         }
-                    } catch (error) {
-                        console.error('Error updating comment like:', error);
-                        alert('Failed to update like');
                     }
                 });
-
-                // Add pin/unpin functionality
-                const pinBtn = div.querySelector('.pin-comment-btn');
-                if (pinBtn) {
-                    pinBtn.addEventListener('click', async () => {
-                        try {
-                            const commentRef = this.commentsRef.child(comment.id);
-                            await commentRef.update({
-                                pinned: !comment.pinned
-                            });
-                        } catch (error) {
-                            console.error('Error updating pin status:', error);
-                            alert('Failed to update pin status');
-                        }
-                    });
-                }
-
-                container.appendChild(div);
-            });
+            }
         });
 
         // In the showComments method, add this after the input event listener:
@@ -1113,17 +1129,6 @@ class SkiddoinkApp {
                 e.preventDefault(); // Prevent newline
                 submitBtn.click(); // Trigger the same click handler
             }
-        });
-
-        // Update comment count listener
-        this.commentsRef.orderByChild('videoId').equalTo(video.id).on('value', snapshot => {
-            const comments = snapshot.val() || {};
-            const commentCount = Object.keys(comments).length;
-            
-            // Update all instances of the comment count
-            document.querySelectorAll(`.comment-count`).forEach(countElement => {
-                countElement.textContent = commentCount;
-            });
         });
     }
 

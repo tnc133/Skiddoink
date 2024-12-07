@@ -575,7 +575,10 @@ class ProfilePage {
                 
                 // Update profile picture URL in Firebase
                 const userId = localStorage.getItem('userId');
-                await this.database.ref(`users/${userId}/profilePic`).set(data.secure_url);
+                const username = localStorage.getItem('username');
+                
+                const updates = {};
+                updates[`users/${userId}/profilePic`] = data.secure_url;
                 
                 // Update all videos by this user to include the profile pic
                 const videosSnapshot = await this.videosRef
@@ -583,11 +586,21 @@ class ProfilePage {
                     .equalTo(this.username)
                     .once('value');
                 
-                const updates = {};
                 Object.entries(videosSnapshot.val() || {}).forEach(([videoId, video]) => {
                     updates[`videos/${videoId}/publisherPic`] = data.secure_url;
                 });
+
+                // Update all comments by this user
+                const commentsSnapshot = await this.commentsRef
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
                 
+                Object.entries(commentsSnapshot.val() || {}).forEach(([commentId, comment]) => {
+                    updates[`comments/${commentId}/userPic`] = data.secure_url;
+                });
+                
+                // Perform all updates atomically
                 if (Object.keys(updates).length > 0) {
                     await this.database.ref().update(updates);
                 }
@@ -1259,11 +1272,28 @@ class ProfilePage {
                 updates[`followers/${oldEncodedUsername}`] = null;
             }
 
+            // Update other users' following lists
+            const allUsersSnapshot = await this.database.ref('users').once('value');
+            allUsersSnapshot.forEach(userSnap => {
+                const userFollowing = userSnap.child('following').val() || {};
+                if (userFollowing[oldEncodedUsername]) {
+                    updates[`users/${userSnap.key}/following/${oldEncodedUsername}`] = null;
+                    updates[`users/${userSnap.key}/following/${encodedNewUsername}`] = true;
+                }
+            });
+
             // Update likes
             const userLikesSnapshot = await this.database.ref(`userLikes/${oldEncodedUsername}`).once('value');
             if (userLikesSnapshot.exists()) {
                 updates[`userLikes/${encodedNewUsername}`] = userLikesSnapshot.val();
                 updates[`userLikes/${oldEncodedUsername}`] = null;
+            }
+
+            // Update comment likes
+            const commentLikesSnapshot = await this.database.ref(`commentLikes/${oldEncodedUsername}`).once('value');
+            if (commentLikesSnapshot.exists()) {
+                updates[`commentLikes/${encodedNewUsername}`] = commentLikesSnapshot.val();
+                updates[`commentLikes/${oldEncodedUsername}`] = null;
             }
 
             // Perform all updates atomically
