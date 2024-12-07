@@ -227,6 +227,11 @@ class SearchPage {
     }
 
     goToVideo(videoId) {
+        // Clear viewingUserVideos if we're currently viewing someone's videos
+        if (localStorage.getItem('viewingUserVideos')) {
+            localStorage.removeItem('viewingUserVideos');
+        }
+        
         localStorage.setItem('activeVideoId', videoId);
         localStorage.setItem('scrollToVideo', 'true');
         window.location.href = './index.html';

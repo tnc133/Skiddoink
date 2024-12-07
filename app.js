@@ -963,6 +963,8 @@ class SkiddoinkApp {
                     }
                 }
 
+                // Remove the manual count update here - let the listener handle it
+
             } catch (error) {
                 console.error('Error posting comment:', error);
                 alert('Failed to post comment');
@@ -1022,6 +1024,9 @@ class SkiddoinkApp {
                                 @${comment.username ? this.decodeUsername(comment.username) : '[Deleted User]'}
                             </a>
                             ${isCreator ? '<span class="creator-badge">Creator</span>' : ''}
+                            ${(isOwnComment || isAdmin) ? `
+                                <button class="delete-comment-btn">🗑️</button>
+                            ` : ''}
                         </div>
                         <p class="comment-text">${comment.text}</p>
                         <div class="comment-actions">
@@ -1038,7 +1043,7 @@ class SkiddoinkApp {
                     </div>
                 `;
 
-                // Modify delete handler to allow admin deletion
+                // Add delete button handler
                 const deleteBtn = div.querySelector('.delete-comment-btn');
                 if (deleteBtn) {
                     deleteBtn.addEventListener('click', async () => {
@@ -1108,6 +1113,17 @@ class SkiddoinkApp {
                 e.preventDefault(); // Prevent newline
                 submitBtn.click(); // Trigger the same click handler
             }
+        });
+
+        // Update comment count listener
+        this.commentsRef.orderByChild('videoId').equalTo(video.id).on('value', snapshot => {
+            const comments = snapshot.val() || {};
+            const commentCount = Object.keys(comments).length;
+            
+            // Update all instances of the comment count
+            document.querySelectorAll(`.comment-count`).forEach(countElement => {
+                countElement.textContent = commentCount;
+            });
         });
     }
 
