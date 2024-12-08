@@ -130,15 +130,38 @@ class SearchPage {
             this.currentVideos = [];
 
             // Search users
+            const userPromises = [];
             usersSnapshot.forEach(child => {
                 const userData = child.val();
                 if (userData && userData.username && userData.username.toLowerCase().includes(query)) {
-                    this.currentUsers.push({
-                        username: userData.username,
-                        profilePic: userData.profilePic || window.DEFAULT_AVATAR
-                    });
+                    userPromises.push(
+                        (async () => {
+                            const followersSnapshot = await this.database.ref(`followers/${userData.username}`).once('value');
+                            const followers = followersSnapshot.val() || {};
+                            
+                            // Validate followers
+                            const validFollowers = [];
+                            for (const follower of Object.keys(followers)) {
+                                const followerSnapshot = await this.database.ref('users')
+                                    .orderByChild('username')
+                                    .equalTo(follower)
+                                    .once('value');
+                                if (followerSnapshot.exists()) {
+                                    validFollowers.push(follower);
+                                }
+                            }
+
+                            this.currentUsers.push({
+                                username: userData.username,
+                                profilePic: userData.profilePic || window.DEFAULT_AVATAR,
+                                followers: validFollowers.length
+                            });
+                        })()
+                    );
                 }
             });
+
+            await Promise.all(userPromises);
 
             // Search videos
             const videos = [];
@@ -154,7 +177,8 @@ class SearchPage {
                 }
             });
 
-            // Sort videos by likes
+            // Sort users by follower count and videos by likes
+            this.currentUsers = this.currentUsers.sort((a, b) => (b.followers || 0) - (a.followers || 0));
             this.currentVideos = videos.sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
             this.displayResults(1, 1, `Results for "${query}"`);

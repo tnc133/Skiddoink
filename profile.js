@@ -240,6 +240,33 @@ class ProfilePage {
         const uploadBtn = document.getElementById('uploadBtn');
         const uploadSection = document.querySelector('.upload-section');
         const settingsBtn = document.getElementById('settingsBtn');
+        const followBtn = document.querySelector('.follow-btn');
+        
+        // Handle follow button visibility and state
+        if (isOwnProfile) {
+            if (followBtn) followBtn.style.display = 'none';
+            if (settingsBtn) settingsBtn.style.display = 'block';
+        } else {
+            if (settingsBtn) settingsBtn.style.display = 'none';
+            if (followBtn) {
+                followBtn.style.display = 'block';
+                // Check if current user is following this profile
+                const currentUsername = localStorage.getItem('username');
+                if (currentUsername) {
+                    const isFollowing = await this.checkIfFollowing(
+                        this.encodeUsername(currentUsername),
+                        this.encodeUsername(this.username)
+                    );
+                    followBtn.textContent = isFollowing ? 'Following' : 'Follow';
+                    followBtn.dataset.following = isFollowing.toString();
+                    followBtn.addEventListener('click', () => this.toggleFollow(this.username));
+                } else {
+                    followBtn.addEventListener('click', () => {
+                        alert('Please sign in to follow users');
+                    });
+                }
+            }
+        }
         
         // Hide buttons for other users' profiles
         if (!isOwnProfile) {
@@ -561,7 +588,7 @@ class ProfilePage {
                         <div class="upload-error" style="display: none;"></div>
                         <video class="preview-video" style="display: none;" controls></video>
                         <img class="preview-image" style="display: none;" alt="Preview">
-                        <button class="remove-media" style="display: none;">✕</button>
+                        <button class="remove-media" style="display: none;">���</button>
                     </div>
                     <input type="file" accept="video/*,image/*" style="display: none;">
                     <div class="upload-form">
@@ -1062,6 +1089,14 @@ class ProfilePage {
             const isFollowing = followingSnapshot.exists();
             const isInFollowers = followersSnapshot.exists();
             
+            // Update the follow button immediately for better UX
+            const followBtn = document.querySelector('.follow-btn');
+            if (followBtn) {
+                const willBeFollowing = !isFollowing;
+                followBtn.textContent = willBeFollowing ? 'Following' : 'Follow';
+                followBtn.dataset.following = willBeFollowing.toString();
+            }
+            
             // If state is inconsistent, fix it
             if (isFollowing !== isInFollowers) {
                 console.log('Fixing inconsistent follow state');
@@ -1084,7 +1119,7 @@ class ProfilePage {
                 }
             } else {
                 // Normal toggle behavior
-                if (this.following.has(publisherUsername)) {
+                if (isFollowing) {
                     // Unfollow
                     await Promise.all([
                         followingRef.remove(),
@@ -1107,15 +1142,22 @@ class ProfilePage {
                 }
             }
 
-            // Update all follow buttons for this user
-            document.querySelectorAll(`.follow-btn[data-username="${publisherUsername}"]`)
-                .forEach(btn => {
-                    btn.textContent = this.following.has(publisherUsername) ? 'Following' : 'Follow';
-                    btn.dataset.following = this.following.has(publisherUsername).toString();
-                });
+            // Update follower count in UI
+            const followerCountElement = document.querySelector('.followers-stat .stat-count');
+            if (followerCountElement) {
+                const currentCount = parseInt(followerCountElement.textContent);
+                followerCountElement.textContent = isFollowing ? currentCount - 1 : currentCount + 1;
+            }
 
         } catch (error) {
             console.error('Error toggling follow:', error);
+            // Revert button state if there was an error
+            const followBtn = document.querySelector('.follow-btn');
+            if (followBtn) {
+                const currentlyFollowing = this.following.has(publisherUsername);
+                followBtn.textContent = currentlyFollowing ? 'Following' : 'Follow';
+                followBtn.dataset.following = currentlyFollowing.toString();
+            }
             alert('Failed to update follow status');
         }
     }
