@@ -416,51 +416,43 @@ class SkiddoinkApp {
         this.isLoading = true;
 
         try {
-            // Check if we're viewing a specific user's videos
-            const viewingUser = localStorage.getItem('viewingUserVideos');
-            
-            // If we've reached the end of the videos
-            if (this.currentVideoIndex >= this.sortedVideos.length) {
-                // If viewing user videos, don't load more
-                if (viewingUser) {
-                    this.isLoading = false;
-                    return;
-                }
-                
-                // Otherwise, continue with normal infinite scroll behavior
-                const shuffleArray = arr => {
-                    const newArr = [...arr];
-                    for (let i = newArr.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
-                    }
-                    return newArr;
-                };
-
-                this.sortedVideos = [
-                    ...this.sortedVideos,
-                    ...shuffleArray(this.allVideos)
-                ];
-            }
-
             const videosToLoad = this.sortedVideos.slice(
                 this.currentVideoIndex,
                 this.currentVideoIndex + this.videosPerLoad
             );
 
             for (const video of videosToLoad) {
+                console.log('Processing item:', video);
+                console.log('Item type:', video.type);
+                console.log('Item URL:', video.url);
+
                 const container = document.createElement('div');
-                container.className = 'video-container';
+                container.className = `video-container ${video.type === 'image' ? 'image-post' : ''}`;
                 container.dataset.videoId = video.id;
-                
-                const videoElement = document.createElement('video');
-                videoElement.src = video.url;
-                videoElement.loop = true;
-                videoElement.playsInline = true;
-                videoElement.volume = 1;
-                videoElement.controls = false;
-                videoElement.setAttribute('playsinline', '');
-                videoElement.setAttribute('webkit-playsinline', '');
+
+                let mediaElement;
+                if (video.type === 'image') {
+                    mediaElement = document.createElement('img');
+                    mediaElement.src = video.url;
+                    mediaElement.alt = video.title || 'Image post';
+                } else {
+                    mediaElement = document.createElement('video');
+                    mediaElement.src = video.url;
+                    mediaElement.loop = true;
+                    mediaElement.playsInline = true;
+                    // Start muted but allow unmuting
+                    mediaElement.muted = !this.hasUserInteracted;
+                }
+
+                container.appendChild(mediaElement);
+
+                // Add unmute hint for videos
+                if (video.type !== 'image' && !this.hasUserInteracted) {
+                    const unmuteHint = document.createElement('div');
+                    unmuteHint.className = 'unmute-hint';
+                    unmuteHint.textContent = 'Tap to unmute';
+                    container.appendChild(unmuteHint);
+                }
 
                 // Update click handler
                 container.addEventListener('click', (e) => {
@@ -474,14 +466,13 @@ class SkiddoinkApp {
                     const timeDiff = currentTime - this.lastTap;
                     const distance = Math.hypot(tapX - this.lastTapX, tapY - this.lastTapY);
 
-                    // Clear any pending single tap timeout
                     if (this.tapTimeout) {
                         clearTimeout(this.tapTimeout);
                         this.tapTimeout = null;
                     }
 
                     if (timeDiff < this.doubleTapDelay && distance < this.doubleTapRadius) {
-                        // Double tap detected
+                        // Double tap - handle like
                         e.preventDefault();
                         e.stopPropagation();
                         
@@ -504,39 +495,78 @@ class SkiddoinkApp {
                             setTimeout(() => heart.remove(), 500);
                         }
                     } else {
-                        // Wait to see if this is a single tap
+                        // Single tap - handle play/pause and unmute
                         this.tapTimeout = setTimeout(() => {
-                            // Single tap - handle play/pause and unmute
-                            if (e.target === container || e.target === videoElement) {
-                                if (videoElement.muted && !this.hasUserInteracted) {
-                                    // First interaction - just unmute and ensure playing
-                                    videoElement.muted = false;
+                            if (video.type !== 'image' && (e.target === container || e.target === mediaElement)) {
+                                if (!this.hasUserInteracted) {
+                                    // First interaction - unmute and ensure playing
                                     this.hasUserInteracted = true;
-                                    if (videoElement.paused) {
-                                        videoElement.play();
+                                    mediaElement.muted = false;
+                                    if (mediaElement.paused) {
+                                        mediaElement.play().catch(console.error);
                                     }
-                                    // Remove unmute hint if it exists
+                                    // Remove unmute hint
                                     const unmuteHint = container.querySelector('.unmute-hint');
                                     if (unmuteHint) {
                                         unmuteHint.remove();
                                     }
+                                    // Unmute all visible videos
+                                    document.querySelectorAll('.video-container.active video').forEach(video => {
+                                        video.muted = false;
+                                    });
                                 } else {
-                                    // Normal play/pause after first interaction
-                                    if (videoElement.paused) {
-                                        videoElement.play();
+                                    // Toggle play/pause after first interaction
+                                    if (mediaElement.paused) {
+                                        mediaElement.play().catch(console.error);
                                     } else {
-                                        videoElement.pause();
+                                        mediaElement.pause();
                                     }
                                 }
                             }
-                            this.tapTimeout = null;
-                        }, this.doubleTapDelay);
+                        }, 200);
                     }
 
                     this.lastTap = currentTime;
                     this.lastTapX = tapX;
                     this.lastTapY = tapY;
                 });
+
+                // Create a new observer for each video container
+                const observer = new IntersectionObserver(
+                    (entries) => {
+                        const entry = entries[0];
+                        if (entry.isIntersecting && !this.isInCommentMode) {
+                            if (video.type !== 'image') {
+                                // Stop any other playing videos
+                                const currentlyPlaying = this.feed.querySelector('.video-container.active');
+                                if (currentlyPlaying && currentlyPlaying !== container) {
+                                    const otherVideo = currentlyPlaying.querySelector('video');
+                                    if (otherVideo) {
+                                        otherVideo.pause();
+                                        currentlyPlaying.classList.remove('active');
+                                    }
+                                }
+
+                                // Play this video
+                                mediaElement.currentTime = 0;
+                                // Maintain unmuted state if user has interacted
+                                mediaElement.muted = !this.hasUserInteracted;
+                                mediaElement.play().catch(console.error);
+                                container.classList.add('active');
+                            }
+                        } else if (!entry.isIntersecting && video.type !== 'image') {
+                            mediaElement.pause();
+                            container.classList.remove('active');
+                        }
+                    },
+                    { threshold: 0.7 }
+                );
+
+                // Only observe if it's a video
+                if (video.type !== 'image') {
+                    observer.observe(container);
+                    this.observers.set(container, observer);
+                }
 
                 // Add interaction buttons
                 const interactionButtons = document.createElement('div');
@@ -571,7 +601,7 @@ class SkiddoinkApp {
                     container.setAttribute('data-user-interaction', 'true');
                     
                     // Keep the current video playing
-                    const wasPlaying = !videoElement.paused;
+                    const wasPlaying = video.type === 'image' ? false : !mediaElement.paused;
                     
                     if (!localStorage.getItem('username')) {
                         alert('Please sign in to like videos');
@@ -624,8 +654,8 @@ class SkiddoinkApp {
 
                         // Restore video state and unlock after delay
                         setTimeout(() => {
-                            if (wasPlaying) {
-                                videoElement.play();
+                            if (wasPlaying && video.type !== 'image') {
+                                mediaElement.play();
                             }
                             this.isScrollLocked = false;
                             container.removeAttribute('data-user-interaction');
@@ -634,8 +664,8 @@ class SkiddoinkApp {
                     } catch (error) {
                         console.error('Error updating likes:', error);
                         alert('Failed to update like');
-                        if (wasPlaying) {
-                            videoElement.play();
+                        if (wasPlaying && video.type !== 'image') {
+                            mediaElement.play();
                         }
                         this.isScrollLocked = false;
                         container.removeAttribute('data-user-interaction');
@@ -656,9 +686,10 @@ class SkiddoinkApp {
                 infoOverlay.innerHTML = `
                     <div class="video-text">
                         <div class="publisher-info">
-                            <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile">
+                            <img src="${video.publisherPic || window.DEFAULT_AVATAR}" class="publisher-pic" alt="Profile" 
+                                onerror="this.src='${window.DEFAULT_AVATAR}'">
                             <div>
-                                <h3>${video.title || 'Untitled Video'}</h3>
+                                <h3>${video.title || (video.type === 'image' ? 'Image Post' : 'Untitled Video')}</h3>
                                 <div class="publisher-row">
                                     <a href="./profile.html?user=${video.publisher}" class="publisher">
                                         @${video.publisher ? this.decodeUsername(video.publisher) : '[Deleted User]'}
@@ -733,19 +764,21 @@ class SkiddoinkApp {
                     }
                 });
 
-                container.appendChild(videoElement);
+                container.appendChild(mediaElement);
                 container.appendChild(interactionButtons);
                 container.appendChild(infoOverlay);
                 container.appendChild(deleteButton);
                 this.feed.appendChild(container);
 
                 // Mark video as watched when it plays
-                videoElement.addEventListener('play', () => {
-                    if (!this.watchedVideos.has(video.id)) {
-                        this.watchedVideos.add(video.id);
-                        localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
-                    }
-                });
+                if (video.type !== 'image') {
+                    mediaElement.addEventListener('play', () => {
+                        if (!this.watchedVideos.has(video.id)) {
+                            this.watchedVideos.add(video.id);
+                            localStorage.setItem('watchedVideos', JSON.stringify([...this.watchedVideos]));
+                        }
+                    });
+                }
 
                 // Update comment count for this video
                 this.commentsRef.orderByChild('videoId').equalTo(video.id).once('value', snapshot => {
@@ -756,33 +789,6 @@ class SkiddoinkApp {
                         countSpan.textContent = commentCount;
                     }
                 });
-
-                // Create a new observer for each video container
-                const observer = new IntersectionObserver(
-                    (entries) => {
-                        const entry = entries[0];
-                        if (entry.isIntersecting && !this.isInCommentMode) {
-                            const videoElement = container.querySelector('video');
-                            
-                            // Stop any other playing videos
-                            const currentlyPlaying = this.feed.querySelector('.video-container.active');
-                            if (currentlyPlaying && currentlyPlaying !== container) {
-                                const video = currentlyPlaying.querySelector('video');
-                                video.pause();
-                                currentlyPlaying.classList.remove('active');
-                            }
-
-                            // Play this video
-                            videoElement.currentTime = 0;
-                            videoElement.play().catch(console.error);
-                            container.classList.add('active');
-                        }
-                    },
-                    { threshold: 0.7 }
-                );
-
-                observer.observe(container);
-                this.observers.set(container, observer);
             }
 
             this.currentVideoIndex += this.videosPerLoad;
@@ -1336,6 +1342,100 @@ class SkiddoinkApp {
                 }
             }
         });
+    }
+
+    // Add this helper method to validate followers/following
+    async validateFollowList(followList) {
+        try {
+            const validUsers = [];
+            for (const username of Object.keys(followList)) {
+                // Skip self-follows
+                if (username === this.username) continue;
+
+                // Check if user exists
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(username)
+                    .once('value');
+
+                if (userSnapshot.exists()) {
+                    validUsers.push(username);
+                } else {
+                    // Remove invalid follow entry
+                    const path = followList === 'followers' ? 
+                        `followers/${this.username}/${username}` : 
+                        `following/${this.username}/${username}`;
+                    await this.database.ref(path).remove();
+                }
+            }
+            return validUsers;
+        } catch (error) {
+            console.error('Error validating follow list:', error);
+            return [];
+        }
+    }
+
+    // Modify the loadUserData method to use validation
+    async loadUserData() {
+        try {
+            console.log('Loading user data for:', this.username);
+            
+            // ... existing code ...
+
+            // Load follower and following counts with validation
+            const [followersSnapshot, followingSnapshot] = await Promise.all([
+                followersRef.once('value'),
+                followingRef.once('value')
+            ]);
+
+            // Clean up any self-follows using encoded username
+            if (followersSnapshot.val() && followersSnapshot.val()[encodedUsername]) {
+                await followersRef.child(encodedUsername).remove();
+            }
+            if (followingSnapshot.val() && followingSnapshot.val()[encodedUsername]) {
+                await followingRef.child(encodedUsername).remove();
+            }
+
+            // Validate and count actual followers/following
+            const validFollowers = await this.validateFollowList(followersSnapshot.val() || {});
+            const validFollowing = await this.validateFollowList(followingSnapshot.val() || {});
+
+            const followerCount = validFollowers.length;
+            const followingCount = validFollowing.length;
+
+            // Update stats UI
+            const statsContainer = document.querySelector('.profile-stats');
+            if (statsContainer) {
+                statsContainer.innerHTML = `
+                    <div class="stat-item followers-stat" role="button" tabindex="0">
+                        <span class="stat-count">${followerCount}</span>
+                        <span class="stat-label">Followers</span>
+                    </div>
+                    <div class="stat-item following-stat" role="button" tabindex="0">
+                        <span class="stat-count">${followingCount}</span>
+                        <span class="stat-label">Following</span>
+                    </div>
+                    <div class="stat-item likes-stat">
+                        <span class="stat-count">${totalLikes}</span>
+                        <span class="stat-label">Likes</span>
+                    </div>
+                `;
+            }
+
+            // Add real-time listeners with validation
+            this.database.ref(`followers/${encodedUsername}`).on('value', async snapshot => {
+                const validFollowers = await this.validateFollowList(snapshot.val() || {});
+                statsContainer.querySelector('.followers-stat .stat-count').textContent = validFollowers.length;
+            });
+
+            this.database.ref(`following/${encodedUsername}`).on('value', async snapshot => {
+                const validFollowing = await this.validateFollowList(snapshot.val() || {});
+                statsContainer.querySelector('.following-stat .stat-count').textContent = validFollowing.length;
+            });
+
+        } catch (error) {
+            console.error('Error in loadUserData:', error);
+        }
     }
 }
 

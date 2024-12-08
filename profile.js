@@ -33,6 +33,31 @@ class ProfilePage {
             return;
         }
 
+        // Check for ongoing upload
+        const uploadStatus = localStorage.getItem('uploadStatus');
+        if (uploadStatus) {
+            const status = JSON.parse(uploadStatus);
+            // Only show if upload was within last 5 minutes
+            if (Date.now() - status.timestamp < 5 * 60 * 1000) {
+                this.showUploadStatus(status);
+            } else {
+                localStorage.removeItem('uploadStatus');
+            }
+        }
+
+        // Add floating upload button if it's the user's own profile
+        if (this.username === localStorage.getItem('username')) {
+            const floatingUpload = document.createElement('button');
+            floatingUpload.className = 'floating-upload-btn';
+            floatingUpload.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 4V20M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            `;
+            document.body.appendChild(floatingUpload);
+            floatingUpload.addEventListener('click', () => this.handleUpload());
+        }
+
         // Initialize Firebase
         console.log('Initializing Firebase...');
         const firebaseConfig = {
@@ -85,14 +110,7 @@ class ProfilePage {
     async loadUserData() {
         try {
             console.log('Loading user data for:', this.username);
-            
-            const currentUsername = localStorage.getItem('username');
-            // Encode both usernames for comparison since Firebase stores them encoded
-            const encodedCurrentUsername = currentUsername?.replace(/\./g, '(');
-            const encodedUsername = this.username.replace(/\./g, '(');
-            
-            // Compare encoded versions for own profile check
-            const isOwnProfile = encodedUsername === encodedCurrentUsername;
+            const encodedUsername = this.encodeUsername(this.username);
             
             // Get user data including profile picture
             const userSnapshot = await this.database.ref('users')
@@ -117,30 +135,29 @@ class ProfilePage {
                     profilePicElement.src = window.DEFAULT_AVATAR;
                 }
             }
-
-            // When displaying username, decode it
-            document.querySelector('.profile-username').textContent = 
-                `@${this.decodeUsername(this.username)}`;
             
-            // Update section title with decoded username
-            const sectionTitle = document.querySelector('.section-title');
-            if (sectionTitle) {
-                sectionTitle.textContent = isOwnProfile ? 
-                    'Your Videos' : 
-                    `${this.decodeUsername(this.username)}'s Videos`;
-            }
-
-            // Use encoded username for Firebase lookup
-            const followingRef = this.database.ref(`following/${encodedUsername}`);
+            // Fix any inconsistencies in follow relationships
+            await this.fixFollowRelationships(this.username);
+            
             const followersRef = this.database.ref(`followers/${encodedUsername}`);
-
+            const followingRef = this.database.ref(`following/${encodedUsername}`);
+            
+            // Calculate total likes from user's videos
+            const videosSnapshot = await this.videosRef
+                .orderByChild('publisher')
+                .equalTo(this.username)
+                .once('value');
+            
+            const videos = videosSnapshot.val() || {};
+            const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
+            
             // Load follower and following counts with validation
             const [followersSnapshot, followingSnapshot] = await Promise.all([
                 followersRef.once('value'),
                 followingRef.once('value')
             ]);
 
-            // Clean up any self-follows using encoded username
+            // Clean up any self-follows
             if (followersSnapshot.val() && followersSnapshot.val()[encodedUsername]) {
                 await followersRef.child(encodedUsername).remove();
             }
@@ -155,112 +172,58 @@ class ProfilePage {
             const followerCount = validFollowers.length;
             const followingCount = validFollowing.length;
 
-            // Calculate total likes from user's videos
-            const videosSnapshot = await this.videosRef
-                .orderByChild('publisher')
-                .equalTo(this.username)
-                .once('value');
-            
-            const videos = videosSnapshot.val() || {};
-            const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
-            
-            // Update stats UI with real-time listener
+            // Update stats UI
             const statsContainer = document.querySelector('.profile-stats');
             if (statsContainer) {
-                const updateStats = () => {
-                    statsContainer.innerHTML = `
-                        <div class="stat-item followers-stat" role="button" tabindex="0">
-                            <span class="stat-count">${followerCount}</span>
-                            <span class="stat-label">Followers</span>
-                        </div>
-                        <div class="stat-item following-stat" role="button" tabindex="0">
-                            <span class="stat-count">${followingCount}</span>
-                            <span class="stat-label">Following</span>
-                        </div>
-                        <div class="stat-item likes-stat">
-                            <span class="stat-count">${totalLikes}</span>
-                            <span class="stat-label">Likes</span>
-                        </div>
-                    `;
+                statsContainer.innerHTML = `
+                    <div class="stat-item followers-stat" role="button" tabindex="0">
+                        <span class="stat-count">${followerCount}</span>
+                        <span class="stat-label">Followers</span>
+                    </div>
+                    <div class="stat-item following-stat" role="button" tabindex="0">
+                        <span class="stat-count">${followingCount}</span>
+                        <span class="stat-label">Following</span>
+                    </div>
+                    <div class="stat-item likes-stat">
+                        <span class="stat-count">${totalLikes}</span>
+                        <span class="stat-label">Likes</span>
+                    </div>
+                `;
 
-                    // Re-add click handlers for followers/following
-                    const followersBtn = statsContainer.querySelector('.followers-stat');
-                    const followingBtn = statsContainer.querySelector('.following-stat');
+                // Add click handlers for followers/following
+                const followersBtn = statsContainer.querySelector('.followers-stat');
+                const followingBtn = statsContainer.querySelector('.following-stat');
 
-                    if (followersBtn) {
-                        followersBtn.addEventListener('click', () => {
-                            this.showFollowModal('followers');
-                        });
-                    }
-
-                    if (followingBtn) {
-                        followingBtn.addEventListener('click', () => {
-                            this.showFollowModal('following');
-                        });
-                    }
-                };
-                updateStats();
-
-                // Add real-time listeners with validation
-                this.database.ref(`followers/${encodedUsername}`).on('value', async snapshot => {
-                    const validFollowers = await this.validateFollowList(snapshot.val() || {});
-                    statsContainer.querySelector('.followers-stat .stat-count').textContent = validFollowers.length;
-                });
-
-                this.database.ref(`following/${encodedUsername}`).on('value', async snapshot => {
-                    const validFollowing = await this.validateFollowList(snapshot.val() || {});
-                    statsContainer.querySelector('.following-stat .stat-count').textContent = validFollowing.length;
-                });
-            }
-            
-            // Add follow button if not own profile and not deleted user
-            if (!isOwnProfile && this.username !== '[Deleted User]' && this.username) {
-                if (!currentUsername) return; // Exit if not logged in
-
-                const isFollowing = await this.checkIfFollowing(currentUsername, this.username);
-                
-                const followBtn = document.createElement('button');
-                followBtn.className = 'profile-follow-btn';
-                followBtn.textContent = isFollowing ? 'Following' : 'Follow';
-                followBtn.dataset.username = this.username;
-                followBtn.dataset.following = isFollowing.toString();
-                
-                followBtn.addEventListener('click', async () => {
-                    if (!currentUsername) {
-                        alert('Please sign in to follow users');
-                        return;
-                    }
-                    await this.toggleFollow(this.username);
-                    followBtn.textContent = this.following.has(this.username) ? 'Following' : 'Follow';
-                    followBtn.dataset.following = this.following.has(this.username).toString();
-                });
-                
-                const profileInfo = document.querySelector('.profile-info');
-                // Remove any existing follow button before adding new one
-                const existingBtn = profileInfo.querySelector('.profile-follow-btn');
-                if (existingBtn) {
-                    existingBtn.remove();
+                if (followersBtn) {
+                    followersBtn.addEventListener('click', () => {
+                        this.showFollowModal('followers');
+                    });
                 }
-                profileInfo.appendChild(followBtn);
-            }
 
-            // Show change photo overlay only on own profile
-            const profilePicOverlay = document.querySelector('.profile-pic-overlay');
-            if (profilePicOverlay) {
-                if (isOwnProfile) {
-                    profilePicOverlay.style.display = 'flex';
-                    
-                    // Add click handler to profile picture for own profile
-                    const profilePic = document.querySelector('.profile-pic');
-                    if (profilePic) {
-                        profilePic.addEventListener('click', () => {
-                            this.handleProfilePicUpload();
-                        });
-                    }
-                } else {
-                    profilePicOverlay.style.display = 'none';
+                if (followingBtn) {
+                    followingBtn.addEventListener('click', () => {
+                        this.showFollowModal('following');
+                    });
                 }
             }
+
+            // Add real-time listeners with validation
+            followersRef.on('value', async snapshot => {
+                const validFollowers = await this.validateFollowList(snapshot.val() || {});
+                const followerCountElement = statsContainer?.querySelector('.followers-stat .stat-count');
+                if (followerCountElement) {
+                    followerCountElement.textContent = validFollowers.length;
+                }
+            });
+
+            followingRef.on('value', async snapshot => {
+                const validFollowing = await this.validateFollowList(snapshot.val() || {});
+                const followingCountElement = statsContainer?.querySelector('.following-stat .stat-count');
+                if (followingCountElement) {
+                    followingCountElement.textContent = validFollowing.length;
+                }
+            });
+
         } catch (error) {
             console.error('Error in loadUserData:', error);
         }
@@ -436,12 +399,14 @@ class ProfilePage {
                 thumbnail.innerHTML = `
                     <div class="mature-warning">
                         <div class="mature-badge">
-                            <span>Mature❤️</span>
-                            <span class="mature-count">${video.likes || 0}</span>
+                            <span>⚠️ ${video.likes || 0}</span>
                         </div>
-                        <video src="${video.url}" muted loop playsinline></video>
+                        ${video.type === 'image' 
+                            ? `<img src="${video.url}" alt="Mature content" style="filter: blur(8px);">`
+                            : `<video src="${video.url}" muted loop playsinline></video>`
+                        }
                         <div class="video-info">
-                            <h4>MATURE VIDEO...</h4>
+                            <h4><span class="warning-symbol">⚠️</span> Mature</h4>
                             <p>@${video.publisher || '[Deleted User]'}</p>
                         </div>
                     </div>
@@ -457,7 +422,7 @@ class ProfilePage {
                                 <span class="mature-warning-icon">⚠️</span>
                                 <h3>Mature Content Warning</h3>
                             </div>
-                            <p>This video may contain mild swearing, violence, or mature themes.</p>
+                            <p>This content may contain mild swearing, violence, or mature themes.</p>
                             <div class="mature-modal-buttons">
                                 <button class="cancel-btn">Cancel</button>
                                 <button class="continue-btn">Continue</button>
@@ -492,37 +457,59 @@ class ProfilePage {
                     });
                 });
             } else {
-                // Normal video display (existing code)
-                const videoElement = document.createElement('video');
-                videoElement.src = video.url;
-                videoElement.muted = true;
-                videoElement.playsInline = true;
-                videoElement.loop = true;
-                
-                const videoInfo = document.createElement('div');
-                videoInfo.className = 'video-info';
-                videoInfo.innerHTML = `
-                    <h4>${video.title || 'Untitled Video'}</h4>
-                    <p>@${video.publisher || '[Deleted User]'}</p>
-                `;
+                // Normal content display
+                if (video.type === 'image') {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = video.url;
+                    imgElement.alt = video.title || 'Image post';
+                    
+                    const videoInfo = document.createElement('div');
+                    videoInfo.className = 'video-info';
+                    videoInfo.innerHTML = `
+                        <h4>${video.title || 'Untitled Post'}</h4>
+                        <p>@${video.publisher || '[Deleted User]'}</p>
+                    `;
 
-                const likesCounter = document.createElement('div');
-                likesCounter.className = 'video-likes';
-                likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
+                    const likesCounter = document.createElement('div');
+                    likesCounter.className = 'video-likes';
+                    likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
 
-                thumbnail.appendChild(videoElement);
-                thumbnail.appendChild(videoInfo);
-                thumbnail.appendChild(likesCounter);
-                
-                // Existing hover and click handlers
-                thumbnail.addEventListener('mouseenter', () => {
-                    videoElement.play().catch(console.error);
-                });
-                thumbnail.addEventListener('mouseleave', () => {
-                    videoElement.pause();
-                    videoElement.currentTime = 0;
-                });
-                
+                    thumbnail.appendChild(imgElement);
+                    thumbnail.appendChild(videoInfo);
+                    thumbnail.appendChild(likesCounter);
+                } else {
+                    // Video content
+                    const videoElement = document.createElement('video');
+                    videoElement.src = video.url;
+                    videoElement.muted = true;
+                    videoElement.playsInline = true;
+                    videoElement.loop = true;
+                    
+                    const videoInfo = document.createElement('div');
+                    videoInfo.className = 'video-info';
+                    videoInfo.innerHTML = `
+                        <h4>${video.title || 'Untitled Video'}</h4>
+                        <p>@${video.publisher || '[Deleted User]'}</p>
+                    `;
+
+                    const likesCounter = document.createElement('div');
+                    likesCounter.className = 'video-likes';
+                    likesCounter.innerHTML = `❤️ ${video.likes || 0}`;
+
+                    thumbnail.appendChild(videoElement);
+                    thumbnail.appendChild(videoInfo);
+                    thumbnail.appendChild(likesCounter);
+                    
+                    // Add hover handlers for videos only
+                    thumbnail.addEventListener('mouseenter', () => {
+                        videoElement.play().catch(console.error);
+                    });
+                    thumbnail.addEventListener('mouseleave', () => {
+                        videoElement.pause();
+                    });
+                }
+
+                // Add click handler for both images and videos
                 thumbnail.addEventListener('click', () => {
                     localStorage.setItem('activeVideoId', video.id);
                     localStorage.setItem('scrollToVideo', 'true');
@@ -530,303 +517,208 @@ class ProfilePage {
                     window.location.href = './index.html';
                 });
             }
-            
+
             videosGrid.appendChild(thumbnail);
         });
     }
 
     handleUpload() {
+        const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB in bytes
+        
+        const validateFile = (file) => {
+            if (!file) return { valid: false, error: 'No file selected' };
+            if (file.size > MAX_FILE_SIZE) {
+                return { valid: false, error: 'File size exceeds 100MB limit' };
+            }
+            if (!file.type.startsWith('video/') && !file.type.startsWith('image/')) {
+                return { valid: false, error: 'Only video and image files are allowed' };
+            }
+            return { valid: true };
+        };
+
         const uploadModal = document.createElement('div');
-        uploadModal.className = 'settings-modal';  // Reuse settings modal styles
+        uploadModal.className = 'upload-modal';
         uploadModal.innerHTML = `
-            <div class="settings-content upload-content">
-                <div class="settings-header">
-                    <h3>Upload Video</h3>
-                    <button class="close-settings">×</button>
+            <div class="upload-content">
+                <div class="upload-header">
+                    <h3>Upload Media</h3>
+                    <button class="close-upload">×</button>
                 </div>
-                
-                <div class="upload-sections">
-                    <div class="upload-preview">
-                        <div class="video-preview-container">
-                            <div class="video-placeholder">
-                                <span>📁</span>
-                                <p>No video selected</p>
-                                <button class="settings-button select-video-btn">Select Video</button>
+                <div class="upload-body">
+                    <div class="media-preview" id="dropZone">
+                        <div class="preview-placeholder">
+                            <div class="upload-icon">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 16L12 8M12 8L15 11M12 8L9 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M3 15V16C3 18.2091 4.79086 20 7 20H17C19.2091 20 21 18.2091 21 16V15M3 15V8C3 5.79086 4.79086 4 7 4H17C19.2091 4 21 5.79086 21 8V15M3 15L8.58579 9.41421C9.36683 8.63317 10.6332 8.63316 11.4142 9.41421L16 14M21 15L18.8789 12.8789C18.0979 12.0979 16.8315 12.0979 16.0505 12.8789L15 13.9294" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
                             </div>
-                            <video style="display: none" controls></video>
+                            <div class="upload-text">
+                                <span class="upload-main-text">Click or drag to upload videos or images</span>
+                                <span class="upload-subtitle">Maximum file size: 100MB</span>
+                            </div>
                         </div>
+                        <div class="upload-error" style="display: none;"></div>
+                        <video class="preview-video" style="display: none;" controls></video>
+                        <img class="preview-image" style="display: none;" alt="Preview">
+                        <button class="remove-media" style="display: none;">✕</button>
                     </div>
-
-                    <div class="upload-details">
-                        <div class="settings-input-group">
-                            <h4>Details</h4>
-                            <input type="text" 
-                                   class="settings-input" 
-                                   id="videoTitle" 
-                                   placeholder="Title (required)"
-                                   maxlength="75">
-                            <div class="char-count">0/75</div>
-                            
-                            <textarea class="settings-input" 
-                                      id="videoDescription" 
-                                      placeholder="Description (optional)"
-                                      maxlength="150"
-                                      rows="4"></textarea>
-                            <div class="char-count">0/150</div>
-
-                            <div class="mature-content-toggle">
-                                <label class="toggle-container">
-                                    <input type="checkbox" id="matureContent">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <div class="toggle-label">
-                                    <span>Mature Content</span>
-                                    <p class="toggle-description">Enable if video contains mild swearing, violence, or mature themes</p>
-                                </div>
+                    <input type="file" accept="video/*,image/*" style="display: none;">
+                    <div class="upload-form">
+                        <div class="input-group">
+                            <label for="title-input">Title</label>
+                            <div class="title-container">
+                                <input type="text" id="title-input" class="title-input" placeholder="Give your post a title" maxlength="100">
+                                <span class="char-count">0/100</span>
                             </div>
-
-                            <div class="upload-status" style="display: none;">
-                                <div class="upload-progress">
-                                    <div class="progress-bar"></div>
-                                </div>
-                                <p class="upload-message">Uploading video...</p>
-                            </div>
-                            
-                            <button class="settings-button publish-btn" disabled>Publish</button>
                         </div>
+                        <div class="input-group">
+                            <label for="description-input">Description</label>
+                            <div class="description-container">
+                                <textarea id="description-input" class="description-input" placeholder="Add a description (optional)" maxlength="150"></textarea>
+                                <span class="char-count">0/150</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <div class="mature-toggle">
+                                <label class="switch">
+                                    <input type="checkbox" id="matureContent">
+                                    <span class="slider"></span>
+                                </label>
+                                <div class="mature-label">
+                                    <span>Mature Content</span>
+                                    <span class="mature-description">Enable if content contains mild swearing, violence, or mature themes</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="publish-btn" disabled>
+                            <span class="btn-text">Publish</span>
+                            <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
         `;
 
         document.body.appendChild(uploadModal);
+        requestAnimationFrame(() => uploadModal.classList.add('active'));
 
-        // Add styles for new upload UI
-        const style = document.createElement('style');
-        style.textContent = `
-            .upload-content {
-                max-width: 800px !important;
-            }
-            
-            .upload-sections {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                padding: 20px;
-                height: calc(100% - 52px);
-                overflow-y: auto;
-            }
-            
-            .video-preview-container {
-                aspect-ratio: 9/16;
-                background: #000;
-                border-radius: 8px;
-                overflow: hidden;
-                margin-bottom: 16px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
-            .video-placeholder {
-                text-align: center;
-                color: #666;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-            }
-            
-            .video-placeholder span {
-                font-size: 48px;
-                margin-bottom: 4px;
+        const closeBtn = uploadModal.querySelector('.close-upload');
+        const fileInput = uploadModal.querySelector('input[type="file"]');
+        const dropZone = uploadModal.querySelector('#dropZone');
+        const placeholder = uploadModal.querySelector('.preview-placeholder');
+        const videoPreview = uploadModal.querySelector('.preview-video');
+        const imagePreview = uploadModal.querySelector('.preview-image');
+        const removeButton = uploadModal.querySelector('.remove-media');
+        const titleInput = uploadModal.querySelector('.title-input');
+        const descInput = uploadModal.querySelector('.description-input');
+        const publishBtn = uploadModal.querySelector('.publish-btn');
+        const errorDisplay = uploadModal.querySelector('.upload-error');
+
+        const showError = (message) => {
+            errorDisplay.textContent = message;
+            errorDisplay.style.display = 'block';
+            setTimeout(() => {
+                errorDisplay.style.display = 'none';
+            }, 3000);
+        };
+
+        const handleFile = (file) => {
+            const validation = validateFile(file);
+            if (!validation.valid) {
+                showError(validation.error);
+                fileInput.value = ''; // Clear the input to allow reselecting
+                return;
             }
 
-            .video-placeholder p {
-                margin: 0;
-            }
-            
-            .video-placeholder .select-video-btn {
-                margin: 0;
-                padding: 8px 16px;
-                font-size: 0.9rem;
-            }
-            
-            .video-preview-container video {
-                width: 100%;
-                height: 100%;
-                object-fit: contain;
-                background: #000;
-            }
-            
-            .upload-details {
-                padding-right: 20px;
-            }
-            
-            .char-count {
-                text-align: right;
-                font-size: 12px;
-                color: #666;
-                margin-top: -8px;
-                margin-bottom: 16px;
-            }
-            
-            .upload-progress {
-                height: 4px;
-                background: #333;
-                border-radius: 2px;
-                margin: 16px 0;
-                overflow: hidden;
-            }
-            
-            .progress-bar {
-                height: 100%;
-                background: #FF4444;
-                width: 0%;
-                transition: width 0.3s ease;
-            }
-            
-            .upload-message {
-                text-align: center;
-                color: #666;
-                margin: 8px 0;
-            }
-            
-            textarea.settings-input {
-                resize: vertical;
-                min-height: 100px;
-            }
-            
-            @media (max-width: 768px) {
-                .upload-sections {
-                    grid-template-columns: 1fr;
-                }
-                
-                .upload-details {
-                    padding-right: 0;
-                }
+            const isVideo = file.type.startsWith('video/');
+            const isImage = file.type.startsWith('image/');
+
+            if (isVideo) {
+                videoPreview.src = URL.createObjectURL(file);
+                videoPreview.style.display = 'block';
+                imagePreview.style.display = 'none';
+            } else if (isImage) {
+                imagePreview.src = URL.createObjectURL(file);
+                imagePreview.style.display = 'block';
+                videoPreview.style.display = 'none';
             }
 
-            .mature-content-toggle {
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                margin: 16px 0;
-                padding: 12px;
-                background: rgba(255, 68, 68, 0.1);
-                border-radius: 8px;
-            }
+            // Create a new FileList containing our file
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            fileInput.files = dataTransfer.files;
 
-            .toggle-container {
-                position: relative;
-                display: inline-block;
-                width: 44px;
-                height: 24px;
-                flex-shrink: 0;
-            }
+            placeholder.style.display = 'none';
+            removeButton.style.display = 'block';
+            updatePublishButton();
+        };
 
-            .toggle-container input {
-                opacity: 0;
-                width: 0;
-                height: 0;
-            }
-
-            .toggle-slider {
-                position: absolute;
-                cursor: pointer;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: #333;
-                transition: .4s;
-                border-radius: 24px;
-            }
-
-            .toggle-slider:before {
-                position: absolute;
-                content: "";
-                height: 18px;
-                width: 18px;
-                left: 3px;
-                bottom: 3px;
-                background-color: white;
-                transition: .4s;
-                border-radius: 50%;
-            }
-
-            input:checked + .toggle-slider {
-                background-color: #FF4444;
-            }
-
-            input:checked + .toggle-slider:before {
-                transform: translateX(20px);
-            }
-
-            .toggle-label {
-                flex: 1;
-            }
-
-            .toggle-label span {
-                display: block;
-                font-weight: 500;
-                margin-bottom: 4px;
-            }
-
-            .toggle-description {
-                font-size: 0.9rem;
-                color: #666;
-                margin: 0;
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Handle close button
-        const closeBtn = uploadModal.querySelector('.close-settings');
         closeBtn.addEventListener('click', () => {
-            document.body.removeChild(uploadModal);
+            uploadModal.classList.remove('active');
+            setTimeout(() => document.body.removeChild(uploadModal), 300);
         });
 
-        // Handle file selection
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'video/*';
-        
-        const selectBtn = uploadModal.querySelector('.select-video-btn');
-        const videoPreview = uploadModal.querySelector('video');
-        const placeholder = uploadModal.querySelector('.video-placeholder');
-        const publishBtn = uploadModal.querySelector('.publish-btn');
-        const titleInput = uploadModal.querySelector('#videoTitle');
-        const descInput = uploadModal.querySelector('#videoDescription');
-        
-        selectBtn.addEventListener('click', () => fileInput.click());
+        // Drag and drop handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
 
-        // Update character counts
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFile(file);
+        });
+
+        dropZone.addEventListener('click', () => {
+            if (uploadManager.isUploading()) {
+                uploadManager.preventUpload();
+                return;
+            }
+            fileInput.click();
+        });
+
+        // Add remove button functionality
+        removeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.value = '';
+            videoPreview.style.display = 'none';
+            imagePreview.style.display = 'none';
+            placeholder.style.display = 'flex';
+            removeButton.style.display = 'none';
+            updatePublishButton();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        // Character count and button state handlers
         titleInput.addEventListener('input', () => {
             const count = titleInput.value.length;
-            titleInput.nextElementSibling.textContent = `${count}/75`;
+            titleInput.parentElement.querySelector('.char-count').textContent = `${count}/100`;
             updatePublishButton();
         });
 
         descInput.addEventListener('input', () => {
             const count = descInput.value.length;
-            descInput.nextElementSibling.textContent = `${count}/150`;
+            descInput.parentElement.querySelector('.char-count').textContent = `${count}/150`;
         });
 
-        // Enable/disable publish button
         const updatePublishButton = () => {
-            publishBtn.disabled = !titleInput.value.trim() || !fileInput.files[0];
+            const hasTitle = titleInput.value.trim().length > 0;
+            const hasFile = fileInput.files && fileInput.files.length > 0;
+            publishBtn.disabled = !hasTitle || !hasFile;
         };
-
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                videoPreview.src = URL.createObjectURL(file);
-                videoPreview.style.display = 'block';
-                placeholder.style.display = 'none';
-                updatePublishButton();
-            }
-        });
 
         // Handle publish
         publishBtn.addEventListener('click', async () => {
@@ -837,72 +729,49 @@ class ProfilePage {
 
             if (!file || !title) return;
 
-            const uploadStatus = uploadModal.querySelector('.upload-status');
-            const progressBar = uploadModal.querySelector('.progress-bar');
-            const uploadMessage = uploadModal.querySelector('.upload-message');
-            
-            uploadStatus.style.display = 'block';
+            const validation = validateFile(file);
+            if (!validation.valid) {
+                showError(validation.error);
+                return;
+            }
+
+            if (uploadManager.isUploading()) {
+                uploadManager.preventUpload();
+                return;
+            }
+
+            uploadModal.classList.remove('active');
+            setTimeout(() => document.body.removeChild(uploadModal), 300);
             publishBtn.disabled = true;
 
             try {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('upload_preset', 'skiddoink_uploads');
-                formData.append('cloud_name', 'dz8kxt0gy');
-
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', 'https://api.cloudinary.com/v1_1/dz8kxt0gy/video/upload');
+                const response = await uploadManager.startUpload(file, title, description, matureContent);
                 
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                        const percent = (e.loaded / e.total) * 100;
-                        progressBar.style.width = percent + '%';
-                        uploadMessage.textContent = `Uploading: ${Math.round(percent)}%`;
-                    }
+                // Get current user's profile picture
+                const userId = localStorage.getItem('userId');
+                const userSnapshot = await this.database.ref(`users/${userId}`).once('value');
+                const userData = userSnapshot.val();
+                const profilePic = userData?.profilePic || window.DEFAULT_AVATAR;
+
+                const mediaData = {
+                    url: response.secure_url,
+                    title: title,
+                    description: description,
+                    timestamp: Date.now(),
+                    uploadDate: new Date().toISOString(),
+                    views: 0,
+                    likes: 0,
+                    publisher: this.username,
+                    publisherPic: profilePic,
+                    matureContent: matureContent,
+                    type: file.type.startsWith('video/') ? 'video' : 'image'
                 };
 
-                xhr.onload = async () => {
-                    if (xhr.status === 200) {
-                        const data = JSON.parse(xhr.responseText);
-                        
-                        // Get current user's profile picture
-                        const userId = localStorage.getItem('userId');
-                        const userSnapshot = await this.database.ref(`users/${userId}`).once('value');
-                        const userData = userSnapshot.val();
-                        const profilePic = userData?.profilePic || window.DEFAULT_AVATAR;
-
-                        const videoData = {
-                            url: data.secure_url,
-                            title: title,
-                            description: description,
-                            timestamp: Date.now(),
-                            uploadDate: new Date().toISOString(),
-                            views: 0,
-                            likes: 0,
-                            publisher: this.username,
-                            publisherPic: profilePic,
-                            matureContent: matureContent
-                        };
-
-                        await this.videosRef.push(videoData);
-                        
-                        document.body.removeChild(uploadModal);
-                        this.loadUserVideos();
-                        alert('Video uploaded successfully!');
-                    }
-                };
-                
-                xhr.onerror = () => {
-                    uploadMessage.textContent = 'Upload failed';
-                    publishBtn.disabled = false;
-                };
-                
-                xhr.send(formData);
-
+                await this.videosRef.push(mediaData);
+                this.loadUserVideos();
             } catch (error) {
                 console.error('Error:', error);
-                uploadMessage.textContent = 'Upload failed';
-                publishBtn.disabled = false;
+                uploadManager.handleError('Failed to process upload');
             }
         });
     }
@@ -1177,33 +1046,65 @@ class ProfilePage {
         }
         
         try {
-            const encodedUsername = username.replace(/\./g, '(');
-            const encodedPublisher = publisherUsername.replace(/\./g, '(');
+            const encodedUsername = this.encodeUsername(username);
+            const encodedPublisher = this.encodeUsername(publisherUsername);
             
             const followingRef = this.database.ref(`following/${encodedUsername}/${encodedPublisher}`);
             const followersRef = this.database.ref(`followers/${encodedPublisher}/${encodedUsername}`);
             const userRef = this.database.ref(`users/${encodedUsername}/following/${encodedPublisher}`);
             
-            if (this.following.has(publisherUsername)) {
-                // Unfollow
-                await Promise.all([
-                    followingRef.remove(),
-                    followersRef.remove(),
-                    userRef.remove()
-                ]);
-                this.following.delete(publisherUsername);
+            // Check current state in both directions
+            const [followingSnapshot, followersSnapshot] = await Promise.all([
+                followingRef.once('value'),
+                followersRef.once('value')
+            ]);
+            
+            const isFollowing = followingSnapshot.exists();
+            const isInFollowers = followersSnapshot.exists();
+            
+            // If state is inconsistent, fix it
+            if (isFollowing !== isInFollowers) {
+                console.log('Fixing inconsistent follow state');
+                // If either exists, we assume the intention was to follow
+                if (isFollowing || isInFollowers) {
+                    const followData = { timestamp: Date.now() };
+                    await Promise.all([
+                        followingRef.set(followData),
+                        followersRef.set(followData),
+                        userRef.set(followData)
+                    ]);
+                    this.following.add(publisherUsername);
+                } else {
+                    await Promise.all([
+                        followingRef.remove(),
+                        followersRef.remove(),
+                        userRef.remove()
+                    ]);
+                    this.following.delete(publisherUsername);
+                }
             } else {
-                // Follow
-                const followData = {
-                    timestamp: Date.now()
-                };
-                
-                await Promise.all([
-                    followingRef.set(followData),
-                    followersRef.set(followData),
-                    userRef.set(followData)
-                ]);
-                this.following.add(publisherUsername);
+                // Normal toggle behavior
+                if (this.following.has(publisherUsername)) {
+                    // Unfollow
+                    await Promise.all([
+                        followingRef.remove(),
+                        followersRef.remove(),
+                        userRef.remove()
+                    ]);
+                    this.following.delete(publisherUsername);
+                } else {
+                    // Follow
+                    const followData = {
+                        timestamp: Date.now()
+                    };
+                    
+                    await Promise.all([
+                        followingRef.set(followData),
+                        followersRef.set(followData),
+                        userRef.set(followData)
+                    ]);
+                    this.following.add(publisherUsername);
+                }
             }
 
             // Update all follow buttons for this user
@@ -1216,6 +1117,67 @@ class ProfilePage {
         } catch (error) {
             console.error('Error toggling follow:', error);
             alert('Failed to update follow status');
+        }
+    }
+
+    // Add method to fix follow relationships
+    async fixFollowRelationships(username) {
+        try {
+            const encodedUsername = this.encodeUsername(username);
+            const db = this.database;
+
+            // Get all following and followers
+            const [followingSnapshot, followersSnapshot] = await Promise.all([
+                db.ref(`following/${encodedUsername}`).once('value'),
+                db.ref(`followers/${encodedUsername}`).once('value')
+            ]);
+
+            const following = followingSnapshot.val() || {};
+            const followers = followersSnapshot.val() || {};
+
+            // Check each following relationship
+            for (const [followedUser, followData] of Object.entries(following)) {
+                const theirFollowersRef = db.ref(`followers/${followedUser}/${encodedUsername}`);
+                const theirFollowersSnapshot = await theirFollowersRef.once('value');
+                
+                if (!theirFollowersSnapshot.exists()) {
+                    // Fix missing follower entry
+                    await theirFollowersRef.set(followData);
+                }
+            }
+
+            // Check each follower relationship
+            for (const [followerUser, followData] of Object.entries(followers)) {
+                const theirFollowingRef = db.ref(`following/${followerUser}/${encodedUsername}`);
+                const theirFollowingSnapshot = await theirFollowingRef.once('value');
+                
+                if (!theirFollowingSnapshot.exists()) {
+                    // Fix missing following entry
+                    await theirFollowingRef.set(followData);
+                }
+            }
+
+            // Update user's following entries
+            const userFollowingRef = db.ref(`users/${encodedUsername}/following`);
+            const userFollowingSnapshot = await userFollowingRef.once('value');
+            const userFollowing = userFollowingSnapshot.val() || {};
+
+            // Sync user's following with the main following list
+            for (const [followedUser, followData] of Object.entries(following)) {
+                if (!userFollowing[followedUser]) {
+                    await userFollowingRef.child(followedUser).set(followData);
+                }
+            }
+            
+            // Remove any extra entries in user's following
+            for (const followedUser of Object.keys(userFollowing)) {
+                if (!following[followedUser]) {
+                    await userFollowingRef.child(followedUser).remove();
+                }
+            }
+
+        } catch (error) {
+            console.error('Error fixing follow relationships:', error);
         }
     }
 
@@ -1709,6 +1671,260 @@ class ProfilePage {
         }
     }
 }
+
+// Add upload state management
+class UploadManager {
+    constructor() {
+        this.activeUpload = null;
+        this.xhr = null;
+        this.loadPersistedUpload();
+    }
+
+    isUploading() {
+        return this.xhr !== null || (localStorage.getItem('activeUpload') !== null);
+    }
+
+    loadPersistedUpload() {
+        const persistedUpload = localStorage.getItem('activeUpload');
+        if (persistedUpload) {
+            const uploadData = JSON.parse(persistedUpload);
+            if (Date.now() - uploadData.startTime < 3600000) { // 1 hour timeout
+                this.showUploadStatus(uploadData);
+                if (uploadData.status === 'uploading') {
+                    // If we had an active upload that was interrupted, show error
+                    this.handleError('Upload interrupted. Please try again.');
+                }
+            } else {
+                localStorage.removeItem('activeUpload');
+            }
+        }
+    }
+
+    preventUpload() {
+        const existingModal = document.querySelector('.upload-modal');
+        if (existingModal) {
+            existingModal.classList.remove('active');
+            setTimeout(() => existingModal.remove(), 300);
+        }
+
+        const blockingModal = document.createElement('div');
+        blockingModal.className = 'upload-modal active';
+        blockingModal.innerHTML = `
+            <div class="upload-content" style="max-width: 400px; padding: 24px;">
+                <div style="text-align: center;">
+                    <div style="color: #FF4444; font-size: 24px; margin-bottom: 16px;">⚠️</div>
+                    <h3 style="margin: 0 0 12px 0; color: white;">Upload in Progress</h3>
+                    <p style="margin: 0 0 20px 0; color: #888;">Please wait for the current upload to complete or cancel it before starting a new one.</p>
+                    <button class="view-upload-btn" style="background: #333; border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer;">View Current Upload</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(blockingModal);
+
+        // Close when clicking outside
+        blockingModal.addEventListener('click', (e) => {
+            if (e.target === blockingModal) {
+                blockingModal.classList.remove('active');
+                setTimeout(() => blockingModal.remove(), 300);
+            }
+        });
+
+        // View upload button
+        blockingModal.querySelector('.view-upload-btn').addEventListener('click', () => {
+            const uploadStatus = document.getElementById('global-upload-status');
+            if (uploadStatus) {
+                uploadStatus.classList.remove('collapsed');
+            }
+            blockingModal.classList.remove('active');
+            setTimeout(() => blockingModal.remove(), 300);
+        });
+    }
+
+    startUpload(file, title, description, matureContent) {
+        const uploadData = {
+            fileName: file.name,
+            fileSize: file.size,
+            title,
+            description,
+            matureContent,
+            progress: 0,
+            startTime: Date.now(),
+            status: 'uploading',
+            collapsed: false
+        };
+        
+        localStorage.setItem('activeUpload', JSON.stringify(uploadData));
+        this.showUploadStatus(uploadData);
+        return this.performUpload(file, uploadData);
+    }
+
+    showUploadStatus(uploadData) {
+        let uploadStatusBar = document.getElementById('global-upload-status');
+        if (!uploadStatusBar) {
+            uploadStatusBar = document.createElement('div');
+            uploadStatusBar.id = 'global-upload-status';
+            uploadStatusBar.className = 'upload-status-bar';
+            uploadStatusBar.innerHTML = `
+                <div class="upload-status-content">
+                    <div class="upload-status-header">
+                        <div class="upload-status-info">
+                            <div class="upload-status-text">
+                                <div class="upload-title">Uploading media...</div>
+                                <div class="upload-subtitle">${uploadData.fileName}</div>
+                            </div>
+                            <div class="upload-percentage">${uploadData.progress}%</div>
+                        </div>
+                        <button class="cancel-upload-btn" title="Cancel Upload">Cancel</button>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${uploadData.progress}%"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(uploadStatusBar);
+
+            // Add event listener for cancel button
+            const cancelBtn = uploadStatusBar.querySelector('.cancel-upload-btn');
+            cancelBtn.addEventListener('click', () => this.cancelUpload());
+        }
+        uploadStatusBar.classList.add('active');
+    }
+
+    toggleCollapse() {
+        const uploadStatusBar = document.getElementById('global-upload-status');
+        if (uploadStatusBar) {
+            uploadStatusBar.classList.toggle('collapsed');
+            
+            // Update persisted state
+            const uploadData = JSON.parse(localStorage.getItem('activeUpload'));
+            if (uploadData) {
+                uploadData.collapsed = uploadStatusBar.classList.contains('collapsed');
+                localStorage.setItem('activeUpload', JSON.stringify(uploadData));
+            }
+        }
+    }
+
+    cancelUpload() {
+        if (this.xhr) {
+            this.xhr.abort();
+        }
+        this.handleError('Upload cancelled');
+    }
+
+    updateProgress(progress) {
+        const uploadData = JSON.parse(localStorage.getItem('activeUpload'));
+        if (uploadData) {
+            uploadData.progress = progress;
+            localStorage.setItem('activeUpload', JSON.stringify(uploadData));
+            
+            const uploadStatusBar = document.getElementById('global-upload-status');
+            if (uploadStatusBar) {
+                uploadStatusBar.querySelector('.upload-percentage').textContent = `${progress}%`;
+                uploadStatusBar.querySelector('.progress-fill').style.width = `${progress}%`;
+            }
+        }
+    }
+
+    async performUpload(file, uploadData) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', 'skiddoink_uploads');
+        formData.append('cloud_name', 'dz8kxt0gy');
+
+        const resourceType = file.type.startsWith('video/') ? 'video' : 'image';
+        const uploadUrl = `https://api.cloudinary.com/v1_1/dz8kxt0gy/${resourceType}/upload`;
+
+        return new Promise((resolve, reject) => {
+            this.xhr = new XMLHttpRequest();
+            this.xhr.open('POST', uploadUrl);
+            
+            this.xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    this.updateProgress(percent);
+                }
+            };
+
+            this.xhr.onload = () => {
+                if (this.xhr.status === 200) {
+                    const response = JSON.parse(this.xhr.responseText);
+                    this.completeUpload(response);
+                    this.xhr = null;
+                    resolve(response);
+                } else {
+                    this.xhr = null;
+                    this.handleError('Upload failed');
+                    reject(new Error('Upload failed'));
+                }
+            };
+
+            this.xhr.onerror = () => {
+                this.xhr = null;
+                this.handleError('Network error');
+                reject(new Error('Network error'));
+            };
+
+            this.xhr.send(formData);
+        });
+    }
+
+    completeUpload(response) {
+        const uploadStatusBar = document.getElementById('global-upload-status');
+        if (uploadStatusBar) {
+            const uploadTitle = uploadStatusBar.querySelector('.upload-title');
+            const uploadSubtitle = uploadStatusBar.querySelector('.upload-subtitle');
+            const cancelBtn = uploadStatusBar.querySelector('.cancel-upload-btn');
+            
+            uploadStatusBar.classList.add('success');
+            uploadTitle.textContent = 'Upload Complete!';
+            uploadSubtitle.textContent = 'Your post has been published successfully';
+            
+            // Hide cancel button on success
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            
+            setTimeout(() => {
+                uploadStatusBar.classList.remove('active');
+                setTimeout(() => {
+                    if (uploadStatusBar.parentNode) {
+                        uploadStatusBar.parentNode.removeChild(uploadStatusBar);
+                    }
+                }, 300);
+            }, 2000);
+        }
+        localStorage.removeItem('activeUpload');
+    }
+
+    handleError(message) {
+        const uploadStatusBar = document.getElementById('global-upload-status');
+        if (uploadStatusBar) {
+            const uploadTitle = uploadStatusBar.querySelector('.upload-title');
+            const uploadSubtitle = uploadStatusBar.querySelector('.upload-subtitle');
+            const cancelBtn = uploadStatusBar.querySelector('.cancel-upload-btn');
+            
+            // Update UI to error state
+            uploadStatusBar.classList.add('error');
+            uploadTitle.textContent = 'Upload Failed';
+            uploadSubtitle.textContent = message;
+            
+            // Change cancel button to close button
+            cancelBtn.textContent = 'Close';
+            cancelBtn.addEventListener('click', () => {
+                uploadStatusBar.classList.remove('active');
+                setTimeout(() => {
+                    if (uploadStatusBar.parentNode) {
+                        uploadStatusBar.parentNode.removeChild(uploadStatusBar);
+                    }
+                }, 300);
+            });
+        }
+        localStorage.removeItem('activeUpload');
+        this.xhr = null;
+    }
+}
+
+// Initialize the upload manager
+const uploadManager = new UploadManager();
 
 document.addEventListener('DOMContentLoaded', () => {
     new ProfilePage();

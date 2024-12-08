@@ -70,7 +70,7 @@ class SearchPage {
                 videos.push({ ...video, id: videoId });
             });
 
-            // Process users and get their follower counts
+            // Process users and get their validated follower counts
             const users = [];
             const userPromises = [];
             
@@ -78,24 +78,37 @@ class SearchPage {
                 const userData = child.val();
                 if (userData && userData.username) {
                     userPromises.push(
-                        this.database.ref(`followers/${userData.username}`).once('value')
-                            .then(followersSnapshot => {
-                                const followerCount = followersSnapshot.numChildren() || 0;
-                                users.push({
-                                    username: userData.username,
-                                    profilePic: userData.profilePic || window.DEFAULT_AVATAR,
-                                    followers: followerCount
-                                });
-                            })
+                        (async () => {
+                            const followersSnapshot = await this.database.ref(`followers/${userData.username}`).once('value');
+                            const followers = followersSnapshot.val() || {};
+                            
+                            // Validate followers
+                            const validFollowers = [];
+                            for (const follower of Object.keys(followers)) {
+                                const followerSnapshot = await this.database.ref('users')
+                                    .orderByChild('username')
+                                    .equalTo(follower)
+                                    .once('value');
+                                if (followerSnapshot.exists()) {
+                                    validFollowers.push(follower);
+                                }
+                            }
+
+                            users.push({
+                                username: userData.username,
+                                profilePic: userData.profilePic || window.DEFAULT_AVATAR,
+                                followers: validFollowers.length
+                            });
+                        })()
                     );
                 }
             });
 
             await Promise.all(userPromises);
 
-            // Sort by likes/followers (descending)
-            this.currentVideos = videos.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+            // Sort by validated follower count
             this.currentUsers = users.sort((a, b) => (b.followers || 0) - (a.followers || 0));
+            this.currentVideos = videos.sort((a, b) => (b.likes || 0) - (a.likes || 0));
             
             this.displayResults(1, 1, 'Popular');
         } catch (error) {
@@ -156,6 +169,9 @@ class SearchPage {
         const usersToShow = this.currentUsers.slice(0, usersPage * this.ITEMS_PER_PAGE);
         const videosToShow = this.currentVideos.slice(0, videosPage * this.ITEMS_PER_PAGE);
 
+        console.log('Displaying results');
+        console.log('Videos/Photos to show:', videosToShow);
+        
         this.resultsContainer.innerHTML = `
             ${this.currentUsers.length > 0 ? `
                 <div class="search-section">
@@ -184,36 +200,55 @@ class SearchPage {
                     <div class="videos-section">
                         <div class="videos-grid">
                             ${videosToShow.map(video => {
+                                console.log('Processing item in search results:', video);
+                                console.log('Item type:', video.type);
+                                
                                 const videoResult = document.createElement('div');
                                 videoResult.className = 'video-result';
                                 
-                                // Add mature content warning overlay if needed
-                                if (video.matureContent && localStorage.getItem('showMatureContent') !== 'true') {
+                                // Modify the thumbnail creation to handle both videos and images
+                                if (video.type === 'image') {
+                                    console.log('Creating image thumbnail');
                                     videoResult.innerHTML = `
-                                        <div class="video-thumbnail mature-warning" onclick="searchPage.handleMatureVideo('${video.id}')">
-                                            <div class="mature-badge">
-                                                <span>Mature❤️</span>
-                                                <span class="mature-count">${video.likes || 0}</span>
-                                            </div>
-                                            <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
+                                        <div class="video-thumbnail" onclick="searchPage.goToVideo('${video.id}')">
+                                            <img src="${video.url}" alt="${video.title || 'Image post'}">
+                                            <div class="video-likes">❤️ ${video.likes || 0}</div>
                                             <div class="video-info">
-                                                <h4>MATURE VIDEO...</h4>
+                                                <h4>${video.title || 'Untitled Post'}</h4>
                                                 <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
                                             </div>
                                         </div>
                                     `;
                                 } else {
-                                    // Normal video display (existing code)
-                                    videoResult.innerHTML = `
-                                        <div class="video-thumbnail" onclick="searchPage.goToVideo('${video.id}')">
-                                            <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
-                                            <div class="video-likes">❤️ ${video.likes || 0}</div>
-                                            <div class="video-info">
-                                                <h4>${video.title || 'Untitled Video'}</h4>
-                                                <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                                    console.log('Creating video thumbnail');
+                                    // Add mature content warning overlay if needed
+                                    if (video.matureContent && localStorage.getItem('showMatureContent') !== 'true') {
+                                        videoResult.innerHTML = `
+                                            <div class="video-thumbnail mature-warning" onclick="searchPage.handleMatureVideo('${video.id}')">
+                                                <div class="mature-badge">
+                                                    <span>Mature❤️</span>
+                                                    <span class="mature-count">${video.likes || 0}</span>
+                                                </div>
+                                                <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
+                                                <div class="video-info">
+                                                    <h4>MATURE VIDEO...</h4>
+                                                    <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    `;
+                                        `;
+                                    } else {
+                                        // Normal video display (existing code)
+                                        videoResult.innerHTML = `
+                                            <div class="video-thumbnail" onclick="searchPage.goToVideo('${video.id}')">
+                                                <video src="${video.url}" muted loop poster="${video.thumbnail || ''}" playsinline></video>
+                                                <div class="video-likes">❤️ ${video.likes || 0}</div>
+                                                <div class="video-info">
+                                                    <h4>${video.title || 'Untitled Video'}</h4>
+                                                    <p>@${this.decodeUsername(video.publisher || '[Deleted User]')}</p>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
                                 }
 
                                 console.log('Video data:', video);  // Add this to see what data we have
