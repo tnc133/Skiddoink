@@ -112,121 +112,200 @@ class ProfilePage {
             console.log('Loading user data for:', this.username);
             const encodedUsername = this.encodeUsername(this.username);
             
-            // Get user data including profile picture
-            const userSnapshot = await this.database.ref('users')
-                .orderByChild('username')
-                .equalTo(encodedUsername)
-                .once('value');
-            
-            const userData = userSnapshot.val();
-            if (userData) {
-                const userId = Object.keys(userData)[0];
-                const profilePic = userData[userId].profilePic || window.DEFAULT_AVATAR;
-                
-                // Update profile picture in UI
-                const profilePicElement = document.getElementById('profilePic');
-                if (profilePicElement) {
-                    profilePicElement.src = profilePic;
-                }
-            } else {
-                // If no user data found, use default avatar
-                const profilePicElement = document.getElementById('profilePic');
-                if (profilePicElement) {
-                    profilePicElement.src = window.DEFAULT_AVATAR;
-                }
-            }
-            
-            // Fix any inconsistencies in follow relationships
-            await this.fixFollowRelationships(this.username);
-            
-            const followersRef = this.database.ref(`followers/${encodedUsername}`);
-            const followingRef = this.database.ref(`following/${encodedUsername}`);
-            
-            // Calculate total likes from user's videos
-            const videosSnapshot = await this.videosRef
-                .orderByChild('publisher')
-                .equalTo(this.username)
-                .once('value');
-            
-            const videos = videosSnapshot.val() || {};
-            const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
-            
-            // Load follower and following counts with validation
-            const [followersSnapshot, followingSnapshot] = await Promise.all([
-                followersRef.once('value'),
-                followingRef.once('value')
-            ]);
+            // Create a cache key specific to this user
+            const cacheKey = `userStats_${encodedUsername}`;
+            const cachedStats = localStorage.getItem(cacheKey);
+            const cacheExpiry = 5 * 60 * 1000; // 5 minutes
 
-            // Clean up any self-follows
-            if (followersSnapshot.val() && followersSnapshot.val()[encodedUsername]) {
-                await followersRef.child(encodedUsername).remove();
-            }
-            if (followingSnapshot.val() && followingSnapshot.val()[encodedUsername]) {
-                await followingRef.child(encodedUsername).remove();
-            }
-
-            // Validate and count actual followers/following
-            const validFollowers = await this.validateFollowList(followersSnapshot.val() || {});
-            const validFollowing = await this.validateFollowList(followingSnapshot.val() || {});
-
-            const followerCount = validFollowers.length;
-            const followingCount = validFollowing.length;
-
-            // Update stats UI
-            const statsContainer = document.querySelector('.profile-stats');
-            if (statsContainer) {
-                statsContainer.innerHTML = `
-                    <div class="stat-item followers-stat" role="button" tabindex="0">
-                        <span class="stat-count">${followerCount}</span>
-                        <span class="stat-label">Followers</span>
-                    </div>
-                    <div class="stat-item following-stat" role="button" tabindex="0">
-                        <span class="stat-count">${followingCount}</span>
-                        <span class="stat-label">Following</span>
-                    </div>
-                    <div class="stat-item likes-stat">
-                        <span class="stat-count">${totalLikes}</span>
-                        <span class="stat-label">Likes</span>
-                    </div>
-                `;
-
-                // Add click handlers for followers/following
-                const followersBtn = statsContainer.querySelector('.followers-stat');
-                const followingBtn = statsContainer.querySelector('.following-stat');
-
-                if (followersBtn) {
-                    followersBtn.addEventListener('click', () => {
-                        this.showFollowModal('followers');
-                    });
-                }
-
-                if (followingBtn) {
-                    followingBtn.addEventListener('click', () => {
-                        this.showFollowModal('following');
-                    });
+            // Check if we have valid cached data
+            if (cachedStats) {
+                const { stats, timestamp } = JSON.parse(cachedStats);
+                if (Date.now() - timestamp < cacheExpiry) {
+                    this.updateStatsUI(stats);
+                    // Fetch fresh data in background
+                    this.fetchAndCacheStats(encodedUsername, cacheKey);
+                    return;
                 }
             }
 
-            // Add real-time listeners with validation
-            followersRef.on('value', async snapshot => {
-                const validFollowers = await this.validateFollowList(snapshot.val() || {});
-                const followerCountElement = statsContainer?.querySelector('.followers-stat .stat-count');
-                if (followerCountElement) {
-                    followerCountElement.textContent = validFollowers.length;
-                }
-            });
-
-            followingRef.on('value', async snapshot => {
-                const validFollowing = await this.validateFollowList(snapshot.val() || {});
-                const followingCountElement = statsContainer?.querySelector('.following-stat .stat-count');
-                if (followingCountElement) {
-                    followingCountElement.textContent = validFollowing.length;
-                }
-            });
-
+            // If no valid cache, fetch fresh data
+            await this.fetchAndCacheStats(encodedUsername, cacheKey);
+            
         } catch (error) {
             console.error('Error in loadUserData:', error);
         }
+    }
+
+    async fetchAndCacheStats(encodedUsername, cacheKey) {
+        // Batch load all required data in parallel
+        const [
+            userSnapshot,
+            videosSnapshot,
+            followersSnapshot,
+            followingSnapshot
+        ] = await Promise.all([
+            this.database.ref('users')
+                .orderByChild('username')
+                .equalTo(encodedUsername)
+                .once('value'),
+            this.videosRef
+                .orderByChild('publisher')
+                .equalTo(this.username)
+                .once('value'),
+            this.database.ref(`followers/${encodedUsername}`).once('value'),
+            this.database.ref(`following/${encodedUsername}`).once('value')
+        ]);
+
+        // Process user data and profile picture
+        const userData = userSnapshot.val();
+        if (userData) {
+            const userId = Object.keys(userData)[0];
+            const profilePic = userData[userId].profilePic || window.DEFAULT_AVATAR;
+            const profilePicElement = document.getElementById('profilePic');
+            if (profilePicElement) {
+                profilePicElement.src = profilePic;
+            }
+        } else {
+            const profilePicElement = document.getElementById('profilePic');
+            if (profilePicElement) {
+                profilePicElement.src = window.DEFAULT_AVATAR;
+            }
+        }
+
+        // Calculate total likes efficiently
+        const videos = videosSnapshot.val() || {};
+        const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
+
+        // Process and validate followers/following
+        const [validFollowers, validFollowing] = await Promise.all([
+            this.validateFollowList(followersSnapshot.val() || {}, 'followers'),
+            this.validateFollowList(followingSnapshot.val() || {}, 'following')
+        ]);
+
+        const stats = {
+            followers: validFollowers.length,
+            following: validFollowing.length,
+            likes: totalLikes
+        };
+
+        // Cache the results
+        localStorage.setItem(cacheKey, JSON.stringify({
+            stats,
+            timestamp: Date.now()
+        }));
+
+        // Update UI
+        this.updateStatsUI(stats);
+
+        // Set up real-time listeners for updates
+        this.setupStatsListeners(encodedUsername);
+    }
+
+    async validateFollowList(list, type) {
+        const validUsers = [];
+        const batch = {};
+        const currentUsername = this.encodeUsername(this.username);
+
+        for (const [encodedUser, data] of Object.entries(list)) {
+            if (encodedUser === currentUsername) continue; // Skip self-follows
+
+            try {
+                const userSnapshot = await this.database.ref('users')
+                    .orderByChild('username')
+                    .equalTo(encodedUser)
+                    .once('value');
+
+                if (userSnapshot.exists()) {
+                    validUsers.push(encodedUser);
+                } else {
+                    // Mark for removal if user doesn't exist
+                    batch[`${type}/${currentUsername}/${encodedUser}`] = null;
+                    if (type === 'followers') {
+                        batch[`following/${encodedUser}/${currentUsername}`] = null;
+                    } else {
+                        batch[`followers/${encodedUser}/${currentUsername}`] = null;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error validating user ${encodedUser}:`, error);
+            }
+        }
+
+        // Apply all removals in one batch
+        if (Object.keys(batch).length > 0) {
+            await this.database.ref().update(batch);
+        }
+
+        return validUsers;
+    }
+
+    updateStatsUI(stats) {
+        const statsContainer = document.querySelector('.profile-stats');
+        if (statsContainer) {
+            statsContainer.innerHTML = `
+                <div class="stat-item followers-stat" role="button" tabindex="0">
+                    <span class="stat-count">${stats.followers}</span>
+                    <span class="stat-label">Followers</span>
+                </div>
+                <div class="stat-item following-stat" role="button" tabindex="0">
+                    <span class="stat-count">${stats.following}</span>
+                    <span class="stat-label">Following</span>
+                </div>
+                <div class="stat-item likes-stat">
+                    <span class="stat-count">${stats.likes}</span>
+                    <span class="stat-label">Likes</span>
+                </div>
+            `;
+
+            // Add click handlers for followers/following
+            const followersBtn = statsContainer.querySelector('.followers-stat');
+            const followingBtn = statsContainer.querySelector('.following-stat');
+
+            if (followersBtn) {
+                followersBtn.addEventListener('click', () => {
+                    this.showFollowModal('followers');
+                });
+            }
+
+            if (followingBtn) {
+                followingBtn.addEventListener('click', () => {
+                    this.showFollowModal('following');
+                });
+            }
+        }
+    }
+
+    setupStatsListeners(encodedUsername) {
+        // Remove any existing listeners
+        this.database.ref(`followers/${encodedUsername}`).off();
+        this.database.ref(`following/${encodedUsername}`).off();
+        this.videosRef.orderByChild('publisher').equalTo(this.username).off();
+
+        // Set up new listeners
+        this.database.ref(`followers/${encodedUsername}`).on('value', async snapshot => {
+            const validFollowers = await this.validateFollowList(snapshot.val() || {}, 'followers');
+            const followerCountElement = document.querySelector('.followers-stat .stat-count');
+            if (followerCountElement) {
+                followerCountElement.textContent = validFollowers.length;
+            }
+        });
+
+        this.database.ref(`following/${encodedUsername}`).on('value', async snapshot => {
+            const validFollowing = await this.validateFollowList(snapshot.val() || {}, 'following');
+            const followingCountElement = document.querySelector('.following-stat .stat-count');
+            if (followingCountElement) {
+                followingCountElement.textContent = validFollowing.length;
+            }
+        });
+
+        this.videosRef.orderByChild('publisher').equalTo(this.username).on('value', snapshot => {
+            const videos = snapshot.val() || {};
+            const totalLikes = Object.values(videos).reduce((sum, video) => sum + (video.likes || 0), 0);
+            const likesCountElement = document.querySelector('.likes-stat .stat-count');
+            if (likesCountElement) {
+                likesCountElement.textContent = totalLikes;
+            }
+        });
     }
 
     async setupUI() {
@@ -588,7 +667,7 @@ class ProfilePage {
                         <div class="upload-error" style="display: none;"></div>
                         <video class="preview-video" style="display: none;" controls></video>
                         <img class="preview-image" style="display: none;" alt="Preview">
-                        <button class="remove-media" style="display: none;">���</button>
+                        <button class="remove-media" style="display: none;"></button>
                     </div>
                     <input type="file" accept="video/*,image/*" style="display: none;">
                     <div class="upload-form">
